@@ -1,0 +1,44 @@
+{
+    "player": {
+        "name": "vlc-playlist-controller-server",
+        "video_directory": "/home/greg/videos",
+        "default_video": "charlie-brown-thanksgiving-portrait-rotated.mp4",
+        "check_interval": 1,
+        "restart_delay": 5
+    },
+    "location": {
+        "latitude": 37.3229,
+        "longitude": -77.3064,
+        "timezone": "America/New_York"
+    },
+    "vlc": {
+        "executable": "cvlc",
+        "options": [
+            "--vout=drm_vout",
+            "--drm-vout-no-modeset",
+            "--aout=alsa",
+            "--alsa-audio-device=hdmi:CARD=vc4hdmi,DEV=0",
+            "--fullscreen",
+            "--loop"
+        ]
+    },
+    "schedule": [
+        {
+            "video": "charlie-brown-thanksgiving-portrait-rotated.mp4",
+            "start": "sunset",
+            "end": "22:00"
+        },
+        {
+            "video": "pumpkin_vertical.mp4",
+            "start": "22:00",
+            "end": "00:00"
+        }
+    ],
+    "server": {
+        "tcp": {
+            "host": "0.0.0.0",
+            "port": 8080,
+            "max_clients": 10
+        }
+    }
+}
