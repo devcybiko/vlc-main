@@ -18,7 +18,7 @@ classifiers = [
 ]
 requires-python = ">=3.8"
 dependencies = [
-    "glslib @ git+https://github.com/devcybiko/glslib.git",
+    "glslib @ file:///Users/greg/git/glslib",
     "munch>=4.0.0",
 ]
 

@@ -286,10 +286,16 @@ wheels = [
 [[package]]
 name = "glslib"
 version = "0.1.0"
-source = { git = "https://github.com/devcybiko/glslib.git#fd5f28b5de788b6863c63b8c2d47c87ed354f5de" }
+source = { directory = "../glslib" }
 dependencies = [
     { name = "json5" },
     { name = "munch" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "json5", specifier = ">=0.9.0" },
+    { name = "munch", specifier = ">=2.5.0" },
 ]
 
 [[package]]
@@ -849,6 +855,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "glslib" },
+    { name = "munch" },
 ]
 
 [package.optional-dependencies]
@@ -870,7 +877,8 @@ dev = [
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=22.0" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=4.0" },
-    { name = "glslib", git = "https://github.com/devcybiko/glslib.git" },
+    { name = "glslib", directory = "../glslib" },
+    { name = "munch", specifier = ">=4.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
 ]
 provides-extras = ["dev"]

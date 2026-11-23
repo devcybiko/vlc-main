@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fallback Application base class when glslib is not available
+Simple Application base class for VLC Playlist Controller
 """
 import argparse
 import json
