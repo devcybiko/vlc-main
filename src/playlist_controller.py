@@ -11,7 +11,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-from application import Application
+from glslib import Application
 from vlc_player import VlcPlayer
 from scheduler import ScheduleManager
 
