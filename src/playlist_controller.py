@@ -25,6 +25,7 @@ class VlcPlaylist(Application):
         
     def _arg_parse(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         """Add custom arguments for the VLC controller"""
+        super()._arg_parse(parser)
         parser.add_argument("--dry-run", action="store_true", help="Evaluate scheduling without actual playback")
         return parser
         
