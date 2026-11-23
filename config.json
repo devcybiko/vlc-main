@@ -24,7 +24,7 @@
     },
     "schedule": [
         {
-            "video": "charlie-brown-thanksgiving-portrait-rotated.mp4",
+            "video": "/Users/greg/videos/charlie-brown-thanksgiving-portrait-rotated.mp4",
             "start": "sunset",
             "end": "22:00"
         },
