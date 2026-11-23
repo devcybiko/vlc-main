@@ -18,6 +18,7 @@ from scheduler import ScheduleManager
 class VlcPlaylist(Application):
     def __init__(self, description="VLC Playlist Controller"):
         super().__init__(description)
+        print("Initializing VLC Playlist")
         self.vlc_player = VlcPlayer(self.config)
         self.schedule_manager = ScheduleManager(self.config)
         self.running = False
@@ -64,6 +65,7 @@ class VlcPlaylist(Application):
         
     def start(self):
         """Start the playlist controller"""
+        print("Starting...")
         self.logger.info("Starting VLC Playlist Controller")
         
         # Validate configuration
