@@ -16,7 +16,8 @@
             "--drm-vout-no-modeset",
             "--aout=alsa",
             "--alsa-audio-device=hdmi:CARD=vc4hdmi,DEV=0",
-            "--fullscreen"
+            "--fullscreen",
+            "--play-and-exit"
         ]
     },
     "schedule": {
