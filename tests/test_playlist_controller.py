@@ -32,13 +32,11 @@ class TestVlcPlaylist(unittest.TestCase):
             'vlc': {
                 'options': ['--test']
             },
-            'schedule': [
-                {
-                    'video': 'test_video_1.mp4',
-                    'start': '08:00',
-                    'end': '18:00'
-                }
-            ]
+            'schedule': {
+                'videos': ['test_video_1.mp4', 'test_video_2.mp4'],
+                'start': '08:00',
+                'end': '18:00'
+            }
         }
         with patch.object(sys, 'argv', [__file__]), \
              patch.object(Application, '_config_load', return_value=config_dict):
@@ -63,6 +61,123 @@ class TestVlcPlaylist(unittest.TestCase):
         parser.add_argument.assert_any_call("--dry-run", action="store_true", help="Evaluate scheduling without actual playback")
         parser.add_argument.assert_any_call("--client", action="store_true", help="Run in client mode, connecting to parent server")
             
+    def test_start_initial_video(self):
+        """Test that the initial start plays the currently scheduled video"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'get_current_video',
+                          return_value='test_video_1.mp4') as mock_select:
+            mock_vlc.start_video.return_value = True
+            self.controller._start_initial_video()
+
+        mock_select.assert_called_once()
+        mock_vlc.start_video.assert_called_once_with('test_video_1.mp4')
+        self.assertTrue(self.controller.playing)
+
+    def test_start_initial_video_failure(self):
+        """Test that a failed start leaves playing False and logs the error"""
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'get_current_video',
+                          return_value='test_video_1.mp4'):
+            mock_vlc.start_video.return_value = False
+            self.controller._start_initial_video()
+
+        self.assertFalse(self.controller.playing)
+        self.assertTrue(any("test_video_1.mp4" in str(c.args[0]) for c in mock_logger.error.call_args_list))
+
+    def test_start_initial_video_no_video(self):
+        """Test that a missing selection logs a warning and does not start VLC"""
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'get_current_video',
+                          return_value=None):
+            self.controller._start_initial_video()
+
+        mock_vlc.start_video.assert_not_called()
+        self.assertFalse(self.controller.playing)
+
+    def test_advance_video(self):
+        """Test that _advance_video moves to the next scheduled index"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'get_current_video',
+                          return_value='test_video_2.mp4') as mock_select:
+            mock_vlc.start_video.return_value = True
+            self.controller._advance_video()
+
+        self.assertEqual(self.controller.video_index, 1)
+        mock_select.assert_called_once()
+        mock_vlc.start_video.assert_called_once_with('test_video_2.mp4')
+        self.assertTrue(self.controller.playing)
+
+    def test_advance_video_wraps_around(self):
+        """Test that the video index wraps back to the first entry"""
+        self.controller.video_index = 1
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'get_current_video',
+                          return_value='test_video_1.mp4'):
+            mock_vlc.start_video.return_value = True
+            self.controller._advance_video()
+
+        self.assertEqual(self.controller.video_index, 0)
+        mock_vlc.start_video.assert_called_once_with('test_video_1.mp4')
+
+    def test_run_starts_next_when_video_ends(self):
+        """Test that the run loop advances when the current video process exits"""
+        with patch.object(self.controller, 'start'), \
+             patch.object(self.controller, 'stop'), \
+             patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch('playlist_controller.time.sleep', side_effect=KeyboardInterrupt), \
+             patch.object(self.controller, '_advance_video') as mock_advance:
+            self.controller.running = True
+            self.controller.playing = True
+            mock_vlc.is_running.return_value = False
+            self.controller.run()
+
+        mock_vlc.is_running.assert_called_once()
+        mock_advance.assert_called_once()
+
+    def test_run_starts_video_when_idle(self):
+        """Test that the run loop starts a video when nothing is playing"""
+        with patch.object(self.controller, 'start'), \
+             patch.object(self.controller, 'stop'), \
+             patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch('playlist_controller.time.sleep', side_effect=KeyboardInterrupt), \
+             patch.object(self.controller, '_start_initial_video') as mock_start:
+            self.controller.running = True
+            self.controller.playing = False
+            self.controller.run()
+
+        mock_start.assert_called_once()
+
+    def test_run_dry_run_skips_playback(self):
+        """Test that dry-run mode never touches the player in the loop"""
+        self.controller.config['dry_run'] = True
+        with patch.object(self.controller, 'start'), \
+             patch.object(self.controller, 'stop'), \
+             patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch('playlist_controller.time.sleep', side_effect=KeyboardInterrupt):
+            self.controller.running = True
+            self.controller.playing = False
+            self.controller.run()
+
+        mock_vlc.start_video.assert_not_called()
+        mock_vlc.is_running.assert_not_called()
+
+    def test_validate_config_bad_schedule(self):
+        """Test that a non-dict schedule is rejected"""
+        original_config = self.controller.config
+        self.controller.config['schedule'] = [{'video': 'x.mp4'}]
+        with patch.object(self.controller, 'logger'):
+            self.assertFalse(self.controller._validate_config())
+
+        self.controller.config = original_config
+
     def test_handle_sync_request(self):
         """Test handling sync request"""
         # This should not raise an exception

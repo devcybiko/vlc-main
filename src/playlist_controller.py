@@ -10,7 +10,7 @@ import os
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 from glslib import Application
 from vlc_player import VlcPlayer
@@ -27,6 +27,8 @@ class VlcPlaylist(Application):
         self.running = False
         self.tcp_server = None
         self.tcp_client = None
+        self.video_index = 0
+        self.playing = False
         
     def _arg_parse(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         """Add custom arguments for the VLC controller"""
@@ -61,39 +63,55 @@ class VlcPlaylist(Application):
         
     def _validate_config(self) -> bool:
         """Validate the configuration"""
-        required_sections = ['player', 'location', 'vlc', 'schedule']
+        required_sections = ['player', 'vlc', 'schedule']
         for section in required_sections:
             if section not in self.config:
                 self.logger.error(f"Missing required configuration section: {section}")
                 return False
-                
-        # Validate location
-        location = self.config['location']
-        if 'latitude' not in location or 'longitude' not in location:
-            self.logger.error("Location must include latitude and longitude")
+
+        # Validate the schedule
+        schedule = self.config['schedule']
+        if not isinstance(schedule, dict):
+            self.logger.error("Schedule must be a dict with 'videos', 'start' and 'end'")
             return False
-            
-        # Validate schedule entries
-        for i, entry in enumerate(self.config['schedule']):
-            if 'video' not in entry:
-                self.logger.error(f"Schedule entry {i} missing video file")
-                return False
-                
+        if not schedule.get('videos'):
+            self.logger.error("Schedule must list at least one video")
+            return False
+
         return True
-        
-    def _get_current_schedule_entry(self, dt):
-        """Get the current schedule entry based on time"""
-        # This is a placeholder - actual implementation will go here
-        # based on the scheduling logic from GOALS.md
-        return self.config['schedule'][0] if self.config['schedule'] else None
-        
-    def _select_video(self, dt):
-        """Select the appropriate video file based on schedule"""
-        entry = self._get_current_schedule_entry(dt)
-        if entry:
-            return entry.get('video')
-        return self.config.get('player', {}).get('default_video')
-        
+
+    def _local_now(self):
+        """Current time in the configured location timezone"""
+        return datetime.now(self.schedule_manager.tz)
+
+    def _start_video_by_name(self, video_file):
+        """Start a video and track playback state; returns True on success"""
+        if self.vlc_player.start_video(video_file):
+            self.playing = True
+            return True
+        self.logger.error(f"Failed to start video: {video_file}")
+        return False
+
+    def _start_initial_video(self):
+        """Start playback with the video that should be playing right now"""
+        video_file = self.schedule_manager.get_current_video(self._local_now(), self.video_index)
+        if not video_file:
+            self.logger.warning("No video selected - check configuration")
+            return
+        self.logger.info(f"Starting with video: {video_file}")
+        self._start_video_by_name(video_file)
+
+    def _advance_video(self):
+        """Advance to the next scheduled video after one ends"""
+        if self.schedule_manager.videos:
+            self.video_index = (self.video_index + 1) % len(self.schedule_manager.videos)
+        video_file = self.schedule_manager.get_current_video(self._local_now(), self.video_index)
+        if not video_file:
+            self.logger.warning("No video selected - check configuration")
+            return
+        self.logger.info(f"Starting next video: {video_file}")
+        self._start_video_by_name(video_file)
+
     def _start_server(self):
         """Start the TCP server to accept client connections"""
         server_config = self.config.get('server', {}).get('tcp', {})
@@ -154,17 +172,10 @@ class VlcPlaylist(Application):
         signal.signal(signal.SIGINT, self._signal_handler)
         
         # Initial video selection and playback
-        now = datetime.now(timezone.utc)
-        video_file = self._select_video(now)
-        
-        if not self.config.get('dry_run'):
-            if video_file:
-                self.logger.info(f"Starting with video: {video_file}")
-                self.vlc_player.start_video(video_file)
-            else:
-                self.logger.warning("No video selected - check configuration")
-        else:
+        if self.config.get('dry_run'):
             self.logger.info("Dry run mode - evaluating schedule without playback")
+        else:
+            self._start_initial_video()
             
     def run(self):
         """Main execution loop"""
@@ -172,8 +183,13 @@ class VlcPlaylist(Application):
         
         try:
             while self.running:
-                # In a real implementation, this would check for schedule changes
-                # and manage video transitions
+                if not self.config.get('dry_run'):
+                    if self.playing and not self.vlc_player.is_running():
+                        # The current video ended - start the next one
+                        self._advance_video()
+                    elif not self.playing:
+                        # Nothing playing (initial start or a failed start)
+                        self._start_initial_video()
                 time.sleep(1)
         except KeyboardInterrupt:
             self.logger.info("Interrupted by user")
