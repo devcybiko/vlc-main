@@ -35,7 +35,7 @@ class ScheduleManager:
         try:
             return ZoneInfo(tz_name)
         except Exception:
-            self.logger.warning(f"Unknown timezone {tz_name!r}, falling back to UTC")
+            self.logger.warn(f"Unknown timezone {tz_name!r}, falling back to UTC")
             return timezone.utc
 
     @staticmethod

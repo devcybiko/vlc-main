@@ -2,7 +2,7 @@
 
 After creating or modifying Python code:
 
-- Run `uvx pyright --pythonpath "$(which python)"`.
+- Run `uvx pyright --pythonpath "$(uv run which python)"`.
 - Examine all reported errors.
 - Correct type errors introduced by your changes.
 - Verify that called methods exist on their respective classes.

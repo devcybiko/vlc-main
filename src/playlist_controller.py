@@ -96,7 +96,7 @@ class VlcPlaylist(Application):
         """Start playback with the video that should be playing right now"""
         video_file = self.schedule_manager.get_current_video(self._local_now(), self.video_index)
         if not video_file:
-            self.logger.warning("No video selected - check configuration")
+            self.logger.warn("No video selected - check configuration")
             return
         self.logger.info(f"Starting with video: {video_file}")
         self._start_video_by_name(video_file)
@@ -107,7 +107,7 @@ class VlcPlaylist(Application):
             self.video_index = (self.video_index + 1) % len(self.schedule_manager.videos)
         video_file = self.schedule_manager.get_current_video(self._local_now(), self.video_index)
         if not video_file:
-            self.logger.warning("No video selected - check configuration")
+            self.logger.warn("No video selected - check configuration")
             return
         self.logger.info(f"Starting next video: {video_file}")
         self._start_video_by_name(video_file)
