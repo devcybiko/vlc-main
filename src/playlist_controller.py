@@ -58,6 +58,28 @@ class VlcPlaylist(Application):
         """Handle client identification message"""
         self.logger.info(f"Client identified: {message}")
         
+    def _validate_config(self) -> bool:
+        """Validate the configuration"""
+        required_sections = ['player', 'location', 'vlc', 'schedule']
+        for section in required_sections:
+            if section not in self.config:
+                self.logger.error(f"Missing required configuration section: {section}")
+                return False
+                
+        # Validate location
+        location = self.config['location']
+        if 'latitude' not in location or 'longitude' not in location:
+            self.logger.error("Location must include latitude and longitude")
+            return False
+            
+        # Validate schedule entries
+        for i, entry in enumerate(self.config['schedule']):
+            if 'video' not in entry:
+                self.logger.error(f"Schedule entry {i} missing video file")
+                return False
+                
+        return True
+        
     def _start_server(self):
         """Start the TCP server to accept client connections"""
         server_config = self.config.get('server', {}).get('tcp', {})
@@ -115,22 +137,19 @@ class VlcPlaylist(Application):
         else:
             self.logger.info("Dry run mode - evaluating schedule without playback")
             
-    def stop(self):
-        """Stop the playlist controller gracefully"""
-        if not self.running:
-            return
-            
-        self.running = False
+    def run(self):
+        """Main execution loop"""
+        self.start()
         
-        # Stop TCP server/client connections if they were started
-        if self.tcp_server:
-            self.tcp_server.stop()
-            
-        if self.tcp_client:
-            self.tcp_client.disconnect()
-            
-        self.logger.info("Stopping VLC Playlist Controller")
-        self.vlc_player.stop_video()
+        try:
+            while self.running:
+                # In a real implementation, this would check for schedule changes
+                # and manage video transitions
+                time.sleep(1)
+        except KeyboardInterrupt:
+            self.logger.info("Interrupted by user")
+        finally:
+            self.stop()
 
 def main():
     """Main entry point"""
