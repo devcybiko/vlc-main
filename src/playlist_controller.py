@@ -26,6 +26,7 @@ class VlcPlaylist(Application):
         self.schedule_manager = ScheduleManager(self.config)
         self.running = False
         self.tcp_server = None
+        self.tcp_client = None
         
     def _arg_parse(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         """Add custom arguments for the VLC controller"""
@@ -110,6 +111,21 @@ class VlcPlaylist(Application):
         self.tcp_server.start()
         self.logger.info("TCP server started for client connections")
         
+    def _start_client(self):
+        """Start the TCP client to connect to the parent server"""
+        client_config = self.config.get('client', {}).get('tcp', {})
+        host = client_config.get('host', '192.168.1.100')
+        port = client_config.get('port', 8080)
+        
+        self.tcp_client = TcpClient(host, port)
+        
+        if not self.tcp_client.run():
+            self.tcp_client = None
+            return False
+        
+        self.logger.info("TCP client started for parent server connection")
+        return True
+        
     def start(self):
         """Start the playlist controller"""
         print("Starting...")
@@ -164,6 +180,29 @@ class VlcPlaylist(Application):
         finally:
             self.stop()
             
+    def stop(self):
+        """Stop the controller and clean up VLC and network resources"""
+        self.running = False
+        
+        try:
+            self.vlc_player.stop_video()
+        except Exception as e:
+            self.logger.error(f"Error stopping VLC player: {e}")
+            
+        if self.tcp_server is not None:
+            try:
+                self.tcp_server.stop()
+            except Exception as e:
+                self.logger.error(f"Error stopping TCP server: {e}")
+                
+        if self.tcp_client is not None:
+            try:
+                self.tcp_client.disconnect()
+            except Exception as e:
+                self.logger.error(f"Error stopping TCP client: {e}")
+                
+        self.logger.info("VLC Playlist Controller stopped")
+        
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals"""
         self.logger.info(f"Received signal {signum}, shutting down...")

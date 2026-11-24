@@ -12,40 +12,37 @@ from unittest.mock import Mock, patch
 # Add src to path so we can import our modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
 
+from glslib import Application
 from playlist_controller import VlcPlaylist
 
 
 class TestVlcPlaylist(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures before each test method."""
-        # Mock the application initialization to avoid actual config loading
-        with patch('playlist_controller.Application.__init__') as mock_init:
-            mock_init.return_value = None
-            
+        # Build the controller through its real constructor, stubbing only
+        # CLI argument parsing and configuration loading.
+        config_dict = {
+            'player': {
+                'default_video': 'test.mp4'
+            },
+            'location': {
+                'latitude': 37.3229,
+                'longitude': -77.3064
+            },
+            'vlc': {
+                'options': ['--test']
+            },
+            'schedule': [
+                {
+                    'video': 'test_video_1.mp4',
+                    'start': '08:00',
+                    'end': '18:00'
+                }
+            ]
+        }
+        with patch.object(sys, 'argv', [__file__]), \
+             patch.object(Application, '_config_load', return_value=config_dict):
             self.controller = VlcPlaylist()
-            
-            # Set up mock attributes that would normally be set by Application
-            self.controller.config = {
-                'player': {
-                    'default_video': 'test.mp4'
-                },
-                'location': {
-                    'latitude': 37.3229,
-                    'longitude': -77.3064
-                },
-                'vlc': {
-                    'options': ['--test']
-                },
-                'schedule': [
-                    {
-                        'video': 'test_video_1.mp4',
-                        'start': '08:00',
-                        'end': '18:00'
-                    }
-                ]
-            }
-            self.controller.args = Mock()
-            self.controller.args.client = False
             self.controller.logger = Mock()
             
     def test_init(self):
@@ -58,15 +55,13 @@ class TestVlcPlaylist(unittest.TestCase):
         
     def test_arg_parse(self):
         """Test argument parsing"""
-        # Mock the parent _arg_parse method
-        with patch.object(VlcPlaylist, '_arg_parse') as mock_parent_parse:
-            parser = Mock()
-            result = self.controller._arg_parse(parser)
-            
-            # Verify it calls parent method and adds our arguments
-            mock_parent_parse.assert_called_once_with(parser)
-            parser.add_argument.assert_any_call("--dry-run", action="store_true", help="Evaluate scheduling without actual playback")
-            parser.add_argument.assert_any_call("--client", action="store_true", help="Run in client mode, connecting to parent server")
+        parser = Mock()
+        result = self.controller._arg_parse(parser)
+        
+        # Verify it returns the parser and adds our arguments
+        self.assertIs(result, parser)
+        parser.add_argument.assert_any_call("--dry-run", action="store_true", help="Evaluate scheduling without actual playback")
+        parser.add_argument.assert_any_call("--client", action="store_true", help="Run in client mode, connecting to parent server")
             
     def test_handle_sync_request(self):
         """Test handling sync request"""
@@ -84,13 +79,14 @@ class TestVlcPlaylist(unittest.TestCase):
     def test_handle_client_sync(self):
         """Test handling client sync"""
         # This should not raise an exception
+        mock_socket = Mock()
         message = {
             'timestamp': 1234567890,
             'video_position': 300.5
         }
         
         with patch.object(self.controller, 'logger'):
-            self.controller._handle_client_sync(message)
+            self.controller._handle_sync_request(message, mock_socket)
             # Should not raise any exceptions
             
     def test_handle_client_identify(self):
