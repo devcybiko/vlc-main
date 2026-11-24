@@ -3,6 +3,7 @@
 Unit tests for VlcPlayer class
 """
 import os
+import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
@@ -23,6 +24,14 @@ class TestVlcPlayer(unittest.TestCase):
             }
         }
         self.player = VlcPlayer(self.config)
+        # A real, existing file so start_video passes its existence check
+        self.temp_file = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False)
+        self.temp_file.close()
+        self.video_path = self.temp_file.name
+        
+    def tearDown(self):
+        """Clean up the temp video file"""
+        os.unlink(self.video_path)
         
     def test_init(self):
         """Test VlcPlayer initialization"""
@@ -38,27 +47,28 @@ class TestVlcPlayer(unittest.TestCase):
         mock_process.pid = 12345
         mock_popen.return_value = mock_process
         
-        result = self.player.start_video('/fake/video.mp4')
+        result = self.player.start_video(self.video_path)
         
         self.assertTrue(result)
-        self.assertEqual(self.player.current_video, '/fake/video.mp4')
+        self.assertEqual(self.player.current_video, self.video_path)
         mock_popen.assert_called_once()
         
     @patch('subprocess.Popen')
     def test_start_video_file_not_found(self, mock_popen):
         """Test starting video when file doesn't exist"""
-        # Mock the process but simulate file not found
-        result = self.player.start_video('/nonexistent/video.mp4')
+        # Should raise FileNotFoundError since the file doesn't exist
+        with self.assertRaises(FileNotFoundError):
+            self.player.start_video('/nonexistent/video.mp4')
         
-        # Should return False since file doesn't exist (but subprocess won't be called)
-        self.assertFalse(result)
+        # subprocess must not be invoked for a missing file
+        mock_popen.assert_not_called()
         
     @patch('subprocess.Popen')
     def test_start_video_exception(self, mock_popen):
         """Test starting video with exception"""
         mock_popen.side_effect = Exception("Process error")
         
-        result = self.player.start_video('/fake/video.mp4')
+        result = self.player.start_video(self.video_path)
         
         self.assertFalse(result)
         
@@ -80,7 +90,7 @@ class TestVlcPlayer(unittest.TestCase):
         mock_popen.return_value = mock_process
         
         # Start a video first
-        self.player.start_video('/fake/video.mp4')
+        self.player.start_video(self.video_path)
         
         # Stop the video
         result = self.player.stop_video()
@@ -103,7 +113,7 @@ class TestVlcPlayer(unittest.TestCase):
         mock_popen.return_value = mock_process
         
         # Start a video first
-        self.player.start_video('/fake/video.mp4')
+        self.player.start_video(self.video_path)
         
         self.assertTrue(self.player.is_running())
 

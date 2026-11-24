@@ -15,10 +15,13 @@ class VlcPlayer:
         self.logger = logging.getLogger(self.__class__.__name__)
         
     def start_video(self, video_path: str) -> bool:
-        """Start playing a video with VLC"""
+        """Start playing a video with VLC
+
+        Raises:
+            FileNotFoundError: if video_path does not exist
+        """
         if not os.path.exists(video_path):
-            self.logger.error(f"Video file not found: {video_path}")
-            return False
+            raise FileNotFoundError(f"Video file not found: {video_path}")
             
         # Build VLC command based on config
         vlc_config = self.config.get('vlc', {})

@@ -125,6 +125,38 @@ class TestVlcPlaylist(unittest.TestCase):
         
         self.assertFalse(result)
         
+    @patch('playlist_controller.TcpClient')
+    def test_start_client_custom_config(self, mock_tcp_client_class):
+        """Test client start uses host/port from configuration"""
+        mock_client = Mock()
+        mock_tcp_client_class.return_value = mock_client
+        mock_client.run.return_value = True
+        
+        self.controller.config['client'] = {
+            'tcp': {
+                'host': '10.0.0.5',
+                'port': 9999
+            }
+        }
+        
+        result = self.controller._start_client()
+        
+        self.assertTrue(result)
+        mock_tcp_client_class.assert_called_once_with('10.0.0.5', 9999)
+        self.assertIs(self.controller.tcp_client, mock_client)
+        
+    @patch('playlist_controller.TcpClient')
+    def test_start_client_failure_clears_client(self, mock_tcp_client_class):
+        """Test that a failed client start leaves no stale client behind"""
+        mock_client = Mock()
+        mock_tcp_client_class.return_value = mock_client
+        mock_client.run.return_value = False
+        
+        result = self.controller._start_client()
+        
+        self.assertFalse(result)
+        self.assertIsNone(self.controller.tcp_client)
+        
     def test_validate_config_success(self):
         """Test successful config validation"""
         # Test with valid config
@@ -157,6 +189,93 @@ class TestVlcPlaylist(unittest.TestCase):
         with patch.object(self.controller, 'logger'):
             self.controller.stop()
             # Should not raise any exceptions
+            
+    def test_stop_clears_running_flag(self):
+        """Test that stop() clears the running flag"""
+        self.controller.running = True
+        
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            self.controller.stop()
+            
+        self.assertFalse(self.controller.running)
+        mock_vlc.stop_video.assert_called_once()
+        
+    def test_stop_stops_tcp_server(self):
+        """Test that stop() stops an active TCP server"""
+        mock_server = Mock()
+        self.controller.tcp_server = mock_server
+        
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            self.controller.stop()
+            
+        mock_vlc.stop_video.assert_called_once()
+        mock_server.stop.assert_called_once()
+        
+    def test_stop_disconnects_tcp_client(self):
+        """Test that stop() disconnects an active TCP client"""
+        mock_client = Mock()
+        self.controller.tcp_client = mock_client
+        
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            self.controller.stop()
+            
+        mock_vlc.stop_video.assert_called_once()
+        mock_client.disconnect.assert_called_once()
+        
+    def test_stop_survives_vlc_player_error(self):
+        """Test that a VLC stop error does not prevent network cleanup"""
+        mock_server = Mock()
+        mock_client = Mock()
+        self.controller.tcp_server = mock_server
+        self.controller.tcp_client = mock_client
+        
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            mock_vlc.stop_video.side_effect = RuntimeError("vlc died")
+            self.controller.stop()
+            
+        self.assertFalse(self.controller.running)
+        mock_server.stop.assert_called_once()
+        mock_client.disconnect.assert_called_once()
+        self.assertTrue(any("vlc died" in str(call.args[0]) for call in mock_logger.error.call_args_list))
+        
+    def test_stop_survives_tcp_server_error(self):
+        """Test that a TCP server stop error does not prevent client cleanup"""
+        mock_server = Mock()
+        mock_client = Mock()
+        self.controller.tcp_server = mock_server
+        self.controller.tcp_client = mock_client
+        
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            mock_server.stop.side_effect = RuntimeError("server error")
+            self.controller.stop()
+            
+        mock_client.disconnect.assert_called_once()
+        self.assertTrue(any("server error" in str(call.args[0]) for call in mock_logger.error.call_args_list))
+        
+    def test_stop_survives_tcp_client_error(self):
+        """Test that a TCP client disconnect error is logged, not raised"""
+        mock_client = Mock()
+        self.controller.tcp_client = mock_client
+        
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            mock_client.disconnect.side_effect = RuntimeError("client error")
+            self.controller.stop()
+            
+        self.assertTrue(any("client error" in str(call.args[0]) for call in mock_logger.error.call_args_list))
+        
+    def test_signal_handler_stops(self):
+        """Test that the signal handler triggers a clean shutdown"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'stop') as mock_stop:
+            self.controller._signal_handler(signal.SIGTERM, None)
+            
+        mock_stop.assert_called_once()
 
 
 if __name__ == '__main__':

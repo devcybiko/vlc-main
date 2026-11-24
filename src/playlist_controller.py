@@ -19,8 +19,8 @@ from tcp_server import TcpServer
 from tcp_client import TcpClient
 
 class VlcPlaylist(Application):
-    def __init__(self, description="VLC Playlist Controller"):
-        super().__init__(description, debug_level=15)
+    def __init__(self):
+        super().__init__("VLC Playlist Controller", debug_level=15, config_json="vlc-00.json")
         print("Initializing VLC Playlist")
         self.vlc_player = VlcPlayer(self.config)
         self.schedule_manager = ScheduleManager(self.config)
