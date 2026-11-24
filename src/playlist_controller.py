@@ -80,6 +80,19 @@ class VlcPlaylist(Application):
                 
         return True
         
+    def _get_current_schedule_entry(self, dt):
+        """Get the current schedule entry based on time"""
+        # This is a placeholder - actual implementation will go here
+        # based on the scheduling logic from GOALS.md
+        return self.config['schedule'][0] if self.config['schedule'] else None
+        
+    def _select_video(self, dt):
+        """Select the appropriate video file based on schedule"""
+        entry = self._get_current_schedule_entry(dt)
+        if entry:
+            return entry.get('video')
+        return self.config.get('player', {}).get('default_video')
+        
     def _start_server(self):
         """Start the TCP server to accept client connections"""
         server_config = self.config.get('server', {}).get('tcp', {})
@@ -150,6 +163,11 @@ class VlcPlaylist(Application):
             self.logger.info("Interrupted by user")
         finally:
             self.stop()
+            
+    def _signal_handler(self, signum, frame):
+        """Handle shutdown signals"""
+        self.logger.info(f"Received signal {signum}, shutting down...")
+        self.stop()
 
 def main():
     """Main entry point"""

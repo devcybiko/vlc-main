@@ -96,13 +96,14 @@ class TestVlcPlaylist(unittest.TestCase):
     def test_handle_client_identify(self):
         """Test handling client identification"""
         # This should not raise an exception
+        mock_socket = Mock()
         message = {
             'command': 'identify',
             'type': 'vlc_client'
         }
         
         with patch.object(self.controller, 'logger'):
-            self.controller._handle_client_identify(message)
+            self.controller._handle_client_identify(message, mock_socket)
             # Should not raise any exceptions
             
     @patch('playlist_controller.TcpClient')
