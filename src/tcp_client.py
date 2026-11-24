@@ -11,11 +11,11 @@ import time
 from typing import Callable, List
 
 class TcpClient:
-    def __init__(self, server_host: str, server_port: int, client_id: str = None):
+    def __init__(self, server_host: str, server_port: int, client_id: str | None = None):
         self.server_host = server_host
         self.server_port = server_port
         self.client_id = client_id or f"client_{int(time.time())}"
-        self.socket = None
+        self.socket: socket.socket | None = None
         self.running = False
         self.connected = False
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -74,8 +74,11 @@ class TcpClient:
             
         def listen_loop():
             while self.running and self.connected:
+                sock = self.socket
+                if sock is None:
+                    break
                 try:
-                    data = self.socket.recv(1024)
+                    data = sock.recv(1024)
                     if not data:
                         # Connection closed by server
                         self.logger.info("Server connection closed")

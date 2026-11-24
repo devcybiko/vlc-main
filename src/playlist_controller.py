@@ -164,7 +164,8 @@ class VlcPlaylist(Application):
                 sys.exit(1)
         else:
             # Start TCP server if this is a server instance
-            if 'server' in self.config and 'tcp' in self.config['server']:
+            server_config = self.config.get('server')
+            if isinstance(server_config, dict) and 'tcp' in server_config:
                 self._start_server()
         
         # Register signal handlers for graceful shutdown

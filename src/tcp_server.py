@@ -14,9 +14,9 @@ class TcpServer:
         self.host = host
         self.port = port
         self.max_clients = max_clients
-        self.socket = None
+        self.socket: socket.socket | None = None
         self.running = False
-        self.connected_clients = []
+        self.connected_clients: List[socket.socket] = []
         self.logger = logging.getLogger(self.__class__.__name__)
         self.message_handlers = {}
         
@@ -27,18 +27,19 @@ class TcpServer:
     def start(self):
         """Start the TCP server to accept client connections"""
         try:
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.socket.bind((self.host, self.port))
-            self.socket.listen(self.max_clients)
+            server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server_socket.bind((self.host, self.port))
+            server_socket.listen(self.max_clients)
+            self.socket = server_socket
             self.running = True
-            
+
             self.logger.info(f"TCP server listening on {self.host}:{self.port}")
-            
+
             def accept_connections():
                 while self.running:
                     try:
-                        client_socket, address = self.socket.accept()
+                        client_socket, address = server_socket.accept()
                         client_thread = threading.Thread(
                             target=self._handle_client_connection,
                             args=(client_socket, address)
