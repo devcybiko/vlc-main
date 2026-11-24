@@ -5,6 +5,7 @@ Unit tests for VlcPlayer class
 import os
 import tempfile
 import unittest
+from typing import Any, Dict
 from unittest.mock import Mock, patch
 
 # Add src to path so we can import our modules
@@ -18,7 +19,7 @@ from vlc_player import VlcPlayer
 class TestVlcPlayer(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures before each test method."""
-        self.config = {
+        self.config: Dict[str, Any] = {
             'vlc': {
                 'options': ['--test-option']
             }
@@ -72,6 +73,21 @@ class TestVlcPlayer(unittest.TestCase):
         
         self.assertFalse(result)
         
+    @patch('subprocess.Popen')
+    def test_start_video_relative_path_uses_video_directory(self, mock_popen):
+        """Test that relative paths resolve against player.video_directory"""
+        mock_process = Mock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+
+        self.config['player'] = {'video_directory': os.path.dirname(self.video_path)}
+        filename = os.path.basename(self.video_path)
+
+        result = self.player.start_video(filename)
+
+        self.assertTrue(result)
+        self.assertEqual(self.player.current_video, os.path.join(os.path.dirname(self.video_path), filename))
+
     def test_stop_video_no_process(self):
         """Test stopping video when no process is running"""
         result = self.player.stop_video()

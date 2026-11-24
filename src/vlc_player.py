@@ -19,7 +19,13 @@ class VlcPlayer:
 
         Raises:
             FileNotFoundError: if video_path does not exist
+
+        Relative paths are resolved against config['player']['video_directory'].
         """
+        if not os.path.isabs(video_path):
+            video_dir = self.config.get('player', {}).get('video_directory', '')
+            if video_dir:
+                video_path = os.path.join(video_dir, video_path)
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
             
