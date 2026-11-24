@@ -101,6 +101,29 @@ class VlcPlaylist(Application):
         self.logger.info(f"Starting with video: {video_file}")
         self._start_video_by_name(video_file)
 
+    def _is_playing_scheduled(self) -> bool:
+        """Whether the currently playing file is one of the scheduled videos"""
+        current = self.vlc_player.current_video
+        if not current:
+            return False
+        return os.path.basename(current) in self.schedule_manager.videos
+
+    def _check_window_boundary(self):
+        """Switch playback when we cross the schedule window boundary
+
+        At the end time the scheduled loop stops and the default video
+        plays again; at the start time the scheduled videos resume.
+        """
+        if self.schedule_manager.in_window(self._local_now()):
+            if not self._is_playing_scheduled():
+                self.logger.info("Schedule window opened - switching to scheduled video")
+                self.vlc_player.stop_video()
+                self.playing = False
+        elif self._is_playing_scheduled():
+            self.logger.info("Schedule window ended - switching to default video")
+            self.vlc_player.stop_video()
+            self.playing = False
+
     def _advance_video(self):
         """Advance to the next scheduled video after one ends"""
         if self.schedule_manager.videos:
@@ -191,6 +214,9 @@ class VlcPlaylist(Application):
                     elif not self.playing:
                         # Nothing playing (initial start or a failed start)
                         self._start_initial_video()
+                    else:
+                        # Video still running - check for window boundary crossings
+                        self._check_window_boundary()
                 time.sleep(1)
         except KeyboardInterrupt:
             self.logger.info("Interrupted by user")

@@ -169,6 +169,87 @@ class TestVlcPlaylist(unittest.TestCase):
         mock_vlc.start_video.assert_not_called()
         mock_vlc.is_running.assert_not_called()
 
+    def test_is_playing_scheduled(self):
+        """Test scheduled-vs-default detection by file name"""
+        with patch.object(self.controller, 'vlc_player') as mock_vlc:
+            mock_vlc.current_video = '/home/greg/videos/test_video_1.mp4'
+            self.assertTrue(self.controller._is_playing_scheduled())
+            mock_vlc.current_video = '/home/greg/videos/test.mp4'
+            self.assertFalse(self.controller._is_playing_scheduled())
+            mock_vlc.current_video = None
+            self.assertFalse(self.controller._is_playing_scheduled())
+
+    def test_window_end_stops_scheduled_video(self):
+        """Test that reaching the end time stops the scheduled loop"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'in_window',
+                          return_value=False), \
+             patch.object(self.controller, '_is_playing_scheduled',
+                          return_value=True):
+            self.controller.playing = True
+            self.controller._check_window_boundary()
+
+        mock_vlc.stop_video.assert_called_once()
+        self.assertFalse(self.controller.playing)
+
+    def test_window_end_ignores_default_video(self):
+        """Test that an out-of-window default video is left untouched"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'in_window',
+                          return_value=False), \
+             patch.object(self.controller, '_is_playing_scheduled',
+                          return_value=False):
+            self.controller.playing = True
+            self.controller._check_window_boundary()
+
+        mock_vlc.stop_video.assert_not_called()
+        self.assertTrue(self.controller.playing)
+
+    def test_window_start_stops_default_video(self):
+        """Test that reaching the start time interrupts the default video"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'in_window',
+                          return_value=True), \
+             patch.object(self.controller, '_is_playing_scheduled',
+                          return_value=False):
+            self.controller.playing = True
+            self.controller._check_window_boundary()
+
+        mock_vlc.stop_video.assert_called_once()
+        self.assertFalse(self.controller.playing)
+
+    def test_window_inside_keeps_scheduled_video(self):
+        """Test that a scheduled video inside the window is left running"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller.schedule_manager, 'in_window',
+                          return_value=True), \
+             patch.object(self.controller, '_is_playing_scheduled',
+                          return_value=True):
+            self.controller.playing = True
+            self.controller._check_window_boundary()
+
+        mock_vlc.stop_video.assert_not_called()
+        self.assertTrue(self.controller.playing)
+
+    def test_run_checks_boundary_while_playing(self):
+        """Test that the run loop checks the window boundary on each tick"""
+        with patch.object(self.controller, 'start'), \
+             patch.object(self.controller, 'stop'), \
+             patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch('playlist_controller.time.sleep', side_effect=KeyboardInterrupt), \
+             patch.object(self.controller, '_check_window_boundary') as mock_check:
+            self.controller.running = True
+            self.controller.playing = True
+            mock_vlc.is_running.return_value = True
+            self.controller.run()
+
+        mock_check.assert_called_once()
+
     def test_validate_config_bad_schedule(self):
         """Test that a non-dict schedule is rejected"""
         original_config = self.controller.config
