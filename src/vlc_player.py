@@ -29,21 +29,10 @@ class VlcPlayer:
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"Video file not found: {video_path}")
             
-        # Build VLC command based on config
+        # Build VLC command from config
         vlc_config = self.config.get('vlc', {})
-        cmd = [
-            'cvlc',
-            '--vout=drm_vout',
-            '--drm-vout-no-modeset',
-            '--aout=alsa',
-            '--alsa-audio-device=hdmi:CARD=vc4hdmi,DEV=0',
-            '--fullscreen',
-            '--loop'
-        ]
-        
-        # Add additional VLC options from config
-        if 'options' in vlc_config:
-            cmd.extend(vlc_config['options'])
+        cmd = [vlc_config.get('executable', 'cvlc')]
+        cmd.extend(vlc_config.get('options', []))
             
         # Add video file
         cmd.append(video_path)
