@@ -21,8 +21,11 @@
     },
     "schedule": {
         "videos": [
-            "charlie-brown-thanksgiving-portrait-rotated.mp4",
-            "pumpkin_vertical.mp4"
+            "pe1.mp4",
+            "pe2.mp4",
+            "pe3.mp4",
+            "pe4.mp4",
+            "pe5.mp4"
         ],
         "start": "17:30",
         "end": "22:00"
