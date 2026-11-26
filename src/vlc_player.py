@@ -102,6 +102,7 @@ class VlcPlayer:
             ) as sock:
                 sock.sendall((command + '\n').encode('utf-8'))
                 data = sock.recv(4096).decode('utf-8', errors='replace')
+                sleep(0.5)
                 sock.sendall(('quit\n').encode('utf-8'))
                 data = sock.recv(4096).decode('utf-8', errors='replace')
         except (OSError, socket.timeout) as e:
