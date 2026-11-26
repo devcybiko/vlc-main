@@ -110,8 +110,8 @@ class VlcPlayer:
         print("rc:", lines)
         if lines and len(lines) < 2:
             return None
-        timeline = lines[-2]
-        curr_time = timeline[:2]
+        timeline = lines[-2] # second to last line has current timestamp as "> 123"
+        curr_time = timeline[:2] # "> 123" -> "123"
         return curr_time
 
     def get_time(self) -> Optional[float]:
@@ -122,7 +122,7 @@ class VlcPlayer:
         response = self._rc_command('get_time')
         if response is None:
             return None
-        return self._parse_time(response)
+        return float(response)
 
     @staticmethod
     def _parse_time(text: str) -> Optional[float]:
