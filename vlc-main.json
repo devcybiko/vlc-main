@@ -12,7 +12,9 @@
             "--aout=alsa",
             "--alsa-audio-device=hdmi:CARD=vc4hdmi,DEV=0",
             "--fullscreen",
-            "--play-and-exit"
+            "--play-and-exit",
+            "--video-filter=transform", 
+            "--transform-type=180"
         ]
     },
     "schedule": {
