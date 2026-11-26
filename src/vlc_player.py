@@ -102,7 +102,7 @@ class VlcPlayer:
                 sock.sendall((command + '\n').encode('utf-8'))
                 data = sock.recv(4096).decode('utf-8', errors='replace')
         except (OSError, socket.timeout) as e:
-            self.logger.die(f"rc interface unavailable: {e}")
+            self.logger.error(f"rc interface unavailable: {e}")
             return None
         lines = [line.strip() for line in data.splitlines() if line.strip()]
         print("rc:", lines)
