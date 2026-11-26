@@ -156,6 +156,8 @@ class VlcPlaylist(Application):
         if now - self._last_sync_time >= sync_secs:
             self._last_sync_time = now
             curr_time = self.vlc_player.get_time()
+            if curr_time is None:
+                return
             self._broadcast_sync(curr_time)
 
     def _start_initial_video(self):
