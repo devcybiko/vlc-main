@@ -109,10 +109,15 @@ class VlcPlayer:
             return None
         lines = [line.strip() for line in data.splitlines() if line.strip()]
         print("rc:", lines)
-        if lines and len(lines) < 2:
+        if lines and len(lines) < 4:
             return None
         timeline = lines[-2] # second to last line has current timestamp as "> 123"
         curr_time = timeline[2:] # "> 123" -> "123"
+        try:
+            float(curr_time)
+        except:
+            self.logger.error(f"Invalid time: {curr_time}")
+            return None
         return curr_time
 
     def get_time(self) -> Optional[float]:
