@@ -25,6 +25,7 @@ class VlcTelnet:
                 self.send(f"{self.TELNET_PASSWORD}\n")
                 return
             except Exception:
+                self.logger.warning(f"Connection failed: {tries+1} times... retrying")
                 sleep(1)
         raise ConnectionError("Failed to connect to VLC.")
 
