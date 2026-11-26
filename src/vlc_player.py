@@ -85,15 +85,11 @@ class VlcPlayer:
         # Add video file
         cmd.append(video_path)
         
-        try:
-            print(f"Starting VLC with command: {' '.join(cmd)}")
-            self.process = subprocess.Popen(cmd)
-            self.current_video = video_path
-            self._connect()
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to start VLC: {e}")
-            return False
+        print(f"Starting VLC with command: {' '.join(cmd)}")
+        self.process = subprocess.Popen(cmd)
+        self.current_video = video_path
+        self._connect()
+        return True
             
     def stop_video(self) -> bool:
         """Stop the currently playing video"""
