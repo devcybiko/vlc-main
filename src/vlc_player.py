@@ -31,9 +31,9 @@ class VlcPlayer:
         """Reads stream bytes non-blockingly until terminator is found."""
         while terminator not in self.buffer:
             data = self.sock.recv(4096).decode('utf-8', errors='ignore')
+            print("data:", data)
             if not data:
                 raise ConnectionError("VLC disconnected.")
-            print("data", data)
             self.buffer += data
         
         # Split out the requested data chunk up to the terminator
@@ -124,14 +124,15 @@ class VlcPlayer:
         # Parse out just the number
         lines = [l.strip() for l in response.splitlines() if l.strip()]
         for line in lines:
-            print("line:", line)
             if line.isdigit():
                 return int(line)
         return 0
 
     def seek_to(self, seconds):
         """Instantly seeks to a specific timestamp."""
-        self.sock.sendall(f"seek {seconds}\n".encode())
+        cmd = f"seek {seconds}\n".encode()
+        print(cmd)
+        self.sock.sendall(cmd)
         self._read_until("> ") # Clear buffer up to next prompt
 
     def is_running(self) -> bool:
