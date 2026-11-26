@@ -131,13 +131,14 @@ class VlcPlayer:
     def get_time(self):
         """Instantly samples the video timestamp."""
         response = self.telnet.send("get_time")
-        
+        got_time = 0
         # Parse out just the number
         lines = [l.strip() for l in response.splitlines() if l.strip()]
         for line in lines:
             if line.isdigit():
-                return int(line)
-        return 0
+                got_time = int(line)
+        print(f"Got time: {got_time}")
+        return got_time
 
     def seek_to(self, seconds):
         self.telnet.send(f"seek {int(seconds)}")
