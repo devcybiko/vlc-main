@@ -25,14 +25,7 @@ class VlcPlayer:
         # Extra VLC options appended at launch (e.g. the rc interface on
         # clients). Empty by default so the server VLC is unaffected.
         self.extra_options: List[str] = []
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((self.RC_HOST, self.RC_PORT))
-        self.buffer = ""
-        
-        # 1. Handle Telnet Login immediately
-        self._read_until("\nPassword: ")
-        self.sock.sendall(f"{self.RC_PASSWORD}\n".encode())
-        self._read_until("> ") # Clear the welcome prompt
+        self.sock = None
 
     def _read_until(self, terminator):
         """Reads stream bytes non-blockingly until terminator is found."""
@@ -46,6 +39,16 @@ class VlcPlayer:
         # Split out the requested data chunk up to the terminator
         line, _, self.buffer = self.buffer.partition(terminator)
         return line
+
+    def _connect(self):
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect((self.RC_HOST, self.RC_PORT))
+        self.buffer = ""
+        
+        # 1. Handle Telnet Login immediately
+        self._read_until("\nPassword: ")
+        self.sock.sendall(f"{self.RC_PASSWORD}\n".encode())
+        self._read_until("> ") # Clear the welcome prompt
 
     @staticmethod
     def client_options() -> List[str]:
@@ -88,6 +91,7 @@ class VlcPlayer:
             print(f"Starting VLC with command: {' '.join(cmd)}")
             self.process = subprocess.Popen(cmd)
             self.current_video = video_path
+            self._connect()
             return True
         except Exception as e:
             self.logger.error(f"Failed to start VLC: {e}")
