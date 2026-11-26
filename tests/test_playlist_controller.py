@@ -440,6 +440,43 @@ class TestVlcPlaylist(unittest.TestCase):
             self.controller._start_server()
             # Should not raise any exceptions
 
+    def _swap_server_tcp(self, tcp: dict):
+        """Temporarily replace the controller's server.tcp config section"""
+        original = self.controller.config.get('server')
+        self.controller.config['server'] = {'tcp': tcp}
+        return original
+
+    def _restore_server(self, original):
+        """Restore the server config section swapped by _swap_server_tcp"""
+        if original is None:
+            self.controller.config.pop('server', None)
+        else:
+            self.controller.config['server'] = original
+
+    @patch('playlist_controller.TcpServer')
+    def test_start_server_binds_all_interfaces_by_default(self, mock_tcp_server_class):
+        """Server binds to 0.0.0.0 even when config host is a hostname"""
+        original = self._swap_server_tcp(
+            {'host': 'vlc-00', 'port': 8080, 'max_clients': 10})
+        try:
+            with patch.object(self.controller, 'logger'):
+                self.controller._start_server()
+            mock_tcp_server_class.assert_called_once_with('0.0.0.0', 8080, 10)
+        finally:
+            self._restore_server(original)
+
+    @patch('playlist_controller.TcpServer')
+    def test_start_server_honors_bind_host(self, mock_tcp_server_class):
+        """An explicit bind_host overrides the default bind address"""
+        original = self._swap_server_tcp(
+            {'host': 'vlc-00', 'bind_host': '192.168.1.197', 'port': 8080})
+        try:
+            with patch.object(self.controller, 'logger'):
+                self.controller._start_server()
+            mock_tcp_server_class.assert_called_once_with('192.168.1.197', 8080, 10)
+        finally:
+            self._restore_server(original)
+
     def test_start_video_broadcasts_sync_zero(self):
         """Test that starting a video broadcasts 'sync <video name> 0.0' to clients"""
         mock_server = Mock()

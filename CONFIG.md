@@ -174,6 +174,7 @@ Configuration (`vlc-00.json` / `vlc-macos.json`):
 | Key | Description |
 |---|---|
 | `server.tcp.host` | Host clients connect to (also used by `--client` mode) |
+| `server.tcp.bind_host` | Optional local address the server binds to (default `0.0.0.0`) |
 | `server.tcp.port` | TCP port clients connect to |
 | `server.tcp.max_clients` | Maximum concurrent clients |
 | `schedule.sync_secs` | Period, in seconds, between periodic sync broadcasts |

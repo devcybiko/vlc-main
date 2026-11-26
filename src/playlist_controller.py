@@ -180,11 +180,14 @@ class VlcPlaylist(Application):
     def _start_server(self):
         """Start the TCP server to accept client connections"""
         server_config = self.config.get('server', {}).get('tcp', {})
-        host = server_config.get('host', '0.0.0.0')
+        # The config's server.tcp.host is the address clients use to reach
+        # this server. The server itself binds to all interfaces unless
+        # bind_host is set explicitly.
+        bind_host = server_config.get('bind_host', '0.0.0.0')
         port = server_config.get('port', 8080)
         max_clients = server_config.get('max_clients', 10)
-        
-        self.tcp_server = TcpServer(host, port, max_clients)
+
+        self.tcp_server = TcpServer(bind_host, port, max_clients)
         
         # Register message handlers
         self.tcp_server.register_message_handler('identify', self._handle_client_identify)
