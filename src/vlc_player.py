@@ -134,7 +134,7 @@ class VlcPlayer:
         return 0
 
     def seek_to(self, seconds):
-        self._send(f"seek {seconds}")
+        self._send(f"seek {int(seconds)}")
         sleep(5)
         return self.get_time()
 
