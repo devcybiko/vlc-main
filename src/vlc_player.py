@@ -41,12 +41,18 @@ class VlcPlayer:
         return line
 
     def _connect(self):
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect(("127.0.0.1", self.RC_PORT))
-        self.buffer = ""
-        self._read_until("\nPassword: ")
-        self.sock.sendall(f"{self.RC_PASSWORD}\n".encode())
-        self._read_until("> ") # Clear the welcome prompt
+        for tries in range(5):
+            try:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sock.connect(("127.0.0.1", self.RC_PORT))
+                self.buffer = ""
+                self._read_until("\nPassword: ")
+                self.sock.sendall(f"{self.RC_PASSWORD}\n".encode())
+                self._read_until("> ") # Clear the welcome prompt
+                return
+            except Exception:
+                sleep(1)
+        raise ConnectionError("Failed to connect to VLC.")
 
     @staticmethod
     def client_options() -> List[str]:
