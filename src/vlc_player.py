@@ -21,8 +21,8 @@ class VlcTelnet:
                 self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.sock.connect((self.TELNET_HOST, self.TELNET_PORT))
                 self.buffer = ""
-                self._read_until("\nPassword: ")
-                self._send(f"{self.TELNET_PASSWORD}\n".encode())
+                self.read_until("\nPassword: ")
+                self.send(f"{self.TELNET_PASSWORD}\n")
                 return
             except Exception:
                 sleep(1)
@@ -102,7 +102,8 @@ class VlcPlayer:
         print(f"Starting VLC with command: {' '.join(cmd)}")
         self.process = subprocess.Popen(cmd)
         self.current_video = video_path
-        self.telnet = VlcTelnet(self.TELNET_HOST, self.TELNET_PORT, self.TELNET_PASSWORD).connect()
+        self.telnet = VlcTelnet(self.TELNET_HOST, self.TELNET_PORT, self.TELNET_PASSWORD)
+        self.telnet.connect()
         return True
             
     def stop_video(self) -> bool:
