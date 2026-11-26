@@ -32,7 +32,6 @@ class VlcTelnet:
         """Reads stream bytes non-blockingly until terminator is found."""
         while terminator not in self.buffer:
             data = self.sock.recv(4096).decode('utf-8', errors='ignore')
-            print("data:", data)
             if not data:
                 raise ConnectionError("VLC disconnected.")
             self.buffer += data
@@ -42,10 +41,8 @@ class VlcTelnet:
         return line
 
     def send(self, cmd, prompt="> "):
-        print(f"Sending: {cmd}")
         self.sock.sendall(f"{cmd}\n".encode())
         response = self.read_until(prompt)
-        print(f"Response: {response}")
         return response
 
 
