@@ -62,7 +62,7 @@ class VlcPlayer:
         cmd.append(video_path)
         
         try:
-            self.logger.info(f"Starting VLC with command: {' '.join(cmd)}")
+            print(f"Starting VLC with command: {' '.join(cmd)}")
             self.process = subprocess.Popen(cmd)
             self.current_video = video_path
             return True
