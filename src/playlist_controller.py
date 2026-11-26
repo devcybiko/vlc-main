@@ -22,6 +22,8 @@ class VlcPlaylist(Application):
         super().__init__("VLC Playlist Controller", debug_level=15, config_json="vlc-main.json")
         print("Initializing VLC Playlist")
         self.vlc_player = VlcPlayer(self.config)
+        self.vlc_player.extra_options = VlcPlayer.client_options()
+
         self.schedule_manager = ScheduleManager(self.config)
         self.running = False
         self.tcp_server = None
