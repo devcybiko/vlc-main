@@ -61,6 +61,8 @@ class VlcPlayer:
         self.logger = logging.getLogger(self.__class__.__name__)
         self.sock = None
         self.buffer = ""
+        # run "killall vlc" to stop any existing instances
+        subprocess.run(["killall", "vlc"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     @staticmethod
     def _telnet_options() -> List[str]:
