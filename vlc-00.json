@@ -1,13 +1,8 @@
 {
     "player": {
         "name": "vlc-playlist-controller-server",
-        "video_directory": "/home/greg/videos",
+        "video_directory": "/Users/greg/videos",
         "default_video": "charlie-brown-thanksgiving-portrait-rotated.mp4"
-    },
-    "location": {
-        "latitude": 37.3229,
-        "longitude": -77.3064,
-        "timezone": "America/New_York"
     },
     "vlc": {
         "executable": "cvlc",
@@ -29,11 +24,12 @@
             "pe5.mp4"
         ],
         "start": "17:30",
-        "end": "23:59"
+        "end": "23:59",
+        "sync_secs": 15
     },
     "server": {
         "tcp": {
-            "host": "0.0.0.0",
+            "host": "vlc-00",
             "port": 8080,
             "max_clients": 10
         }

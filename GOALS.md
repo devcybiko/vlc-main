@@ -195,3 +195,23 @@ We'll consider the first standalone version complete when it can:
 - Run automatically as a systemd service after manual testing.
 
 **Recommended implementation approach:** Build the configuration loader and pure scheduling engine first, test those using `--dry-run`, then integrate VLC process management and finally systemd startup. That gives us a reusable foundation for both `vlc-main` and `vlc-child`.
+
+## Operations
+
+### Server
+* when clients register with the server on the tcp port, they are added to the client list
+* whenever the server starts a new video, it sends "sync <video name> 0.0" to all clients. 
+* then periodically (every self.config.schedule.sync_secs) the server sends "sync <video name> <ss.nn>" (sync, video-name timestamp) to all listening clients
+
+### Client
+* Clients gain the server information from self.config.server.tcp.host and .port from vlc-00.json.
+* upon initialization clients attempt to connect to the server and listen for "sync" commands
+* All the clients receive the same protocol over tcp/ip. specifically "sync <video-name> <secs.nn>" (sync, video-name timestamp). 
+*  if the video-name is different from what is currently playing then 
+    * client kills whatever video is currently playing 
+    * starts the named video 
+    * fast-forwards to the timestamp specified
+* else if currently playing video is the same as the named video, then 
+    * fast-forwards the currently playing video to the timestamp specified
+
+

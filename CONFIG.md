@@ -156,3 +156,36 @@ These are the **configuration paths to track**, not a claim that every optional 
 - Runs VLC in the foreground.
 - Executable and playback tested successfully.
 - No automatic startup configured yet.
+
+### TCP Sync Protocol — 2026-11-25
+
+Wire protocol: newline-terminated text lines over TCP.
+
+- **Client → server:** `identify <client-id>` on connect. Clients are added
+  to the server's client list.
+- **Server → clients:** `sync <video-name> <secs.nn>` (video file base name,
+  playback position in seconds, two decimals).
+  - Sent as `sync <video-name> 0.0` whenever the server starts a new video.
+  - Re-sent to all connected clients every `schedule.sync_secs` while a
+    video is playing.
+
+Configuration (`vlc-00.json` / `vlc-macos.json`):
+
+| Key | Description |
+|---|---|
+| `server.tcp.host` | Host clients connect to (also used by `--client` mode) |
+| `server.tcp.port` | TCP port clients connect to |
+| `server.tcp.max_clients` | Maximum concurrent clients |
+| `schedule.sync_secs` | Period, in seconds, between periodic sync broadcasts |
+
+There is no separate `client` configuration section: `--client` mode reads
+the server address from `server.tcp.host` and `server.tcp.port`.
+
+Client behavior on receiving `sync <video-name> <secs.nn>`:
+
+- If `<video-name>` differs from the video currently playing, the client
+  stops the current video and starts the named video fast-forwarded to
+  `<secs.nn>`.
+- If the named video is the one currently playing, the client seeks the
+  current video to `<secs.nn>` (implemented as a restart with
+  `--start-time`, since VLC runs as an uncontrolled subprocess).

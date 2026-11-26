@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
 TCP Server implementation for VLC Playlist Controller
-Handles client connections and synchronization messages
+Handles client connections and synchronization messages.
+
+Wire protocol: newline-terminated text lines.
+The server sends "sync <video-name> <secs.nn>" to all connected clients.
+Clients send "identify <client-id>" when they connect.
 """
-import json
 import logging
 import socket
 import threading
-from typing import List, Callable
+from typing import Callable, List
 
 class TcpServer:
     def __init__(self, host: str = '0.0.0.0', port: int = 8080, max_clients: int = 10):
@@ -17,13 +20,14 @@ class TcpServer:
         self.socket: socket.socket | None = None
         self.running = False
         self.connected_clients: List[socket.socket] = []
+        self._lock = threading.Lock()
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.message_handlers = {}
-        
+        self.message_handlers: dict[str, Callable] = {}
+
     def register_message_handler(self, command: str, handler: Callable):
-        """Register a handler function for a specific message command"""
+        """Register a handler for a command; called as handler(args, client_socket)"""
         self.message_handlers[command] = handler
-        
+
     def start(self):
         """Start the TCP server to accept client connections"""
         try:
@@ -49,73 +53,107 @@ class TcpServer:
                     except Exception as e:
                         if self.running:  # Only log if we're still running
                             self.logger.error(f"Error accepting connection: {e}")
-                            
+
             server_thread = threading.Thread(target=accept_connections)
             server_thread.daemon = True
             server_thread.start()
-            
+
         except Exception as e:
             self.logger.error(f"Failed to start TCP server: {e}")
             self.running = False
-            
+
     def stop(self):
         """Stop the TCP server and close all connections"""
         self.running = False
-        
+
         # Close server socket
         if self.socket:
             self.socket.close()
-            
+
         # Close all client connections
-        for client in self.connected_clients[:]:  # Create a copy to avoid modification during iteration
+        with self._lock:
+            clients = self.connected_clients[:]
+            self.connected_clients.clear()
+
+        for client in clients:
             try:
                 client.close()
             except Exception as e:
                 self.logger.error(f"Error closing client connection: {e}")
-                
-        self.connected_clients.clear()
-        
+
+    def add_client(self, client_socket: socket.socket):
+        """Track a newly connected client"""
+        with self._lock:
+            self.connected_clients.append(client_socket)
+
+    def remove_client(self, client_socket: socket.socket):
+        """Stop tracking a client"""
+        with self._lock:
+            if client_socket in self.connected_clients:
+                self.connected_clients.remove(client_socket)
+
+    def broadcast(self, line: str):
+        """Send a text line to all connected clients
+
+        Clients that can no longer be written to are dropped from the list.
+        """
+        payload = line.encode('utf-8')
+        with self._lock:
+            clients = self.connected_clients[:]
+
+        for client in clients:
+            try:
+                client.send(payload)
+            except Exception as e:
+                self.logger.error(f"Failed to broadcast to client: {e}")
+                self.remove_client(client)
+
     def _handle_client_connection(self, client_socket, address):
-        """Handle individual client connection"""
+        """Handle an individual client connection"""
         self.logger.info(f"Client connected from {address}")
-        self.connected_clients.append(client_socket)
-        
+        self.add_client(client_socket)
+
         try:
             while self.running:
                 data = client_socket.recv(1024)
                 if not data:
                     break
-                    
-                try:
-                    message = json.loads(data.decode('utf-8'))
-                    self._process_message(message, client_socket)
-                except json.JSONDecodeError:
-                    self.logger.error("Invalid JSON message from client")
-                    
+
+                text = data.decode('utf-8', errors='replace')
+                for line in text.splitlines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    parts = line.split()
+                    self._process_message(parts[0], parts[1:], client_socket)
+
         except Exception as e:
             self.logger.error(f"Client handling error: {e}")
         finally:
-            if client_socket in self.connected_clients:
-                self.connected_clients.remove(client_socket)
+            self.remove_client(client_socket)
             client_socket.close()
             self.logger.info(f"Client {address} disconnected")
-            
-    def _process_message(self, message, client_socket):
-        """Process messages from connected clients"""
-        command = message.get('command')
-        
+
+    def _process_message(self, command: str, args: list, client_socket):
+        """Process a message line from a connected client"""
         if command in self.message_handlers:
             try:
                 handler = self.message_handlers[command]
-                handler(message, client_socket)
+                handler(args, client_socket)
             except Exception as e:
                 self.logger.error(f"Error in message handler for {command}: {e}")
         else:
             self.logger.warning(f"Unknown command from client: {command}")
-            
-    def send_message(self, client_socket, message):
-        """Send a message to a specific client"""
-        try:
-            client_socket.send(json.dumps(message).encode('utf-8'))
-        except Exception as e:
-            self.logger.error(f"Failed to send message to client: {e}")
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    server = TcpServer()
+    server.register_message_handler('identify', lambda args, sock:
+                                    print(f"Client identified: {args}"))
+    server.start()
+    try:
+        while True:
+            threading.Event().wait(1)
+    except KeyboardInterrupt:
+        server.stop()

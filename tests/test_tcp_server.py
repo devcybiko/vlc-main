@@ -2,7 +2,6 @@
 """
 Unit tests for TcpServer class
 """
-import json
 import socket
 import threading
 import time
@@ -38,7 +37,7 @@ class TestTcpServer(unittest.TestCase):
         
     def test_register_message_handler(self):
         """Test registering message handlers"""
-        def dummy_handler(message, client_socket):
+        def dummy_handler(args, client_socket):
             pass
             
         self.server.register_message_handler('test', dummy_handler)
@@ -83,13 +82,103 @@ class TestTcpServer(unittest.TestCase):
         self.assertFalse(self.server.running)
         self.assertEqual(len(self.server.connected_clients), 0)
         
+    def test_process_message_known_command(self):
+        """Test that a registered handler is invoked with args and socket"""
+        mock_socket = Mock()
+        received = {}
+
+        def handler(args, client_socket):
+            received['args'] = args
+            received['socket'] = client_socket
+
+        self.server.register_message_handler('identify', handler)
+        self.server._process_message('identify', ['client_1'], mock_socket)
+
+        self.assertEqual(received['args'], ['client_1'])
+        self.assertIs(received['socket'], mock_socket)
+
+    def test_process_message_handler_error_is_logged(self):
+        """Test that a handler exception is logged, not raised"""
+        def handler(args, client_socket):
+            raise RuntimeError("boom")
+
+        self.server.register_message_handler('identify', handler)
+        with patch.object(self.server.logger, 'error') as mock_logger:
+            self.server._process_message('identify', [], Mock())
+
+        self.assertTrue(any("boom" in str(c.args[0]) for c in mock_logger.call_args_list))
+
     def test_process_message_unknown_command(self):
         """Test processing unknown command"""
         with patch.object(self.server.logger, 'warning') as mock_logger:
-            message = {'command': 'unknown'}
             # This should not raise an exception
-            self.server._process_message(message, None)
+            self.server._process_message('unknown', [], None)
             mock_logger.assert_called_once()
+
+    def test_broadcast_sends_line_to_all_clients(self):
+        """Test that broadcast writes the sync line to every connected client"""
+        client_a = Mock()
+        client_b = Mock()
+        self.server.add_client(client_a)
+        self.server.add_client(client_b)
+
+        self.server.broadcast("sync pe1.mp4 0.0")
+
+        client_a.send.assert_called_once_with(b"sync pe1.mp4 0.0")
+        client_b.send.assert_called_once_with(b"sync pe1.mp4 0.0")
+
+    def test_broadcast_drops_dead_client(self):
+        """Test that a client whose send fails is removed from the list"""
+        live = Mock()
+        dead = Mock()
+        dead.send.side_effect = OSError("gone")
+        self.server.add_client(live)
+        self.server.add_client(dead)
+
+        with patch.object(self.server.logger, 'error'):
+            self.server.broadcast("sync pe1.mp4 12.00")
+
+        self.assertEqual(self.server.connected_clients, [live])
+        live.send.assert_called_once()
+
+    def test_broadcast_with_no_clients(self):
+        """Test that broadcasting with no clients is a no-op"""
+        self.server.broadcast("sync pe1.mp4 0.0")  # Should not raise
+
+    def test_remove_client(self):
+        """Test that remove_client removes a tracked client"""
+        client = Mock()
+        self.server.add_client(client)
+        self.server.remove_client(client)
+        self.assertEqual(self.server.connected_clients, [])
+        # Removing an untracked client is a no-op
+        self.server.remove_client(client)
+
+    def test_client_connection_roundtrip(self):
+        """Integration test: a real client socket receives a broadcast line"""
+        # Reserve an ephemeral port
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe.bind(('127.0.0.1', 0))
+        self.server.port = probe.getsockname()[1]
+        probe.close()
+
+        self.server.start()
+        self.assertTrue(self.server.running)
+
+        conn = socket.create_connection(('127.0.0.1', self.server.port))
+        try:
+            # Wait for the server to track the connection
+            deadline = time.time() + 2
+            while time.time() < deadline and not self.server.connected_clients:
+                time.sleep(0.01)
+            self.assertTrue(self.server.connected_clients)
+
+            # The client sends "identify" and receives the sync broadcast
+            conn.sendall(b"identify client_1\n")
+            self.server.broadcast("sync pe1.mp4 0.0")
+            self.assertEqual(conn.recv(1024), b"sync pe1.mp4 0.0")
+        finally:
+            conn.close()
 
 
 if __name__ == '__main__':

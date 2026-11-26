@@ -88,6 +88,58 @@ class TestVlcPlayer(unittest.TestCase):
         self.assertTrue(result)
         self.assertEqual(self.player.current_video, os.path.join(os.path.dirname(self.video_path), filename))
 
+    @patch('subprocess.Popen')
+    def test_start_video_with_start_time(self, mock_popen):
+        """Test that a start time is passed to VLC via --start-time"""
+        mock_process = Mock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+
+        result = self.player.start_video(self.video_path, start_time=123.456)
+
+        self.assertTrue(result)
+        cmd = mock_popen.call_args[0][0]
+        self.assertIn('--start-time=123.456', cmd)
+
+    @patch('subprocess.Popen')
+    def test_start_video_without_start_time(self, mock_popen):
+        """Test that no --start-time flag is added when start_time is 0"""
+        mock_process = Mock()
+        mock_process.pid = 12345
+        mock_popen.return_value = mock_process
+
+        result = self.player.start_video(self.video_path)
+
+        self.assertTrue(result)
+        cmd = mock_popen.call_args[0][0]
+        self.assertFalse(any('start-time' in arg for arg in cmd))
+
+    @patch('subprocess.Popen')
+    def test_seek_to_restarts_video_at_timestamp(self, mock_popen):
+        """Test that seek_to stops and restarts the current video with --start-time"""
+        mock_process = Mock()
+        mock_process.pid = 12345
+        mock_process.poll.return_value = None  # Process is still running
+        mock_popen.return_value = mock_process
+
+        self.player.start_video(self.video_path)
+        result = self.player.seek_to(60.5)
+
+        self.assertTrue(result)
+        self.assertEqual(self.player.current_video, self.video_path)
+        # Two Popen calls: the original start and the seek restart
+        self.assertEqual(mock_popen.call_count, 2)
+        cmd = mock_popen.call_args[0][0]
+        self.assertIn('--start-time=60.500', cmd)
+
+    def test_seek_to_with_no_video(self):
+        """Test that seek_to fails gracefully when nothing is playing"""
+        with patch.object(self.player, 'logger') as mock_logger:
+            result = self.player.seek_to(10.0)
+
+        self.assertFalse(result)
+        mock_logger.error.assert_called_once()
+
     def test_stop_video_no_process(self):
         """Test stopping video when no process is running"""
         result = self.player.stop_video()

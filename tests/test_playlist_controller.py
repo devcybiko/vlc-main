@@ -35,7 +35,8 @@ class TestVlcPlaylist(unittest.TestCase):
             'schedule': {
                 'videos': ['test_video_1.mp4', 'test_video_2.mp4'],
                 'start': '08:00',
-                'end': '18:00'
+                'end': '18:00',
+                'sync_secs': 15
             }
         }
         with patch.object(sys, 'argv', [__file__]), \
@@ -71,7 +72,7 @@ class TestVlcPlaylist(unittest.TestCase):
             self.controller._start_initial_video()
 
         mock_select.assert_called_once()
-        mock_vlc.start_video.assert_called_once_with('test_video_1.mp4')
+        mock_vlc.start_video.assert_called_once_with('test_video_1.mp4', start_time=0.0)
         self.assertTrue(self.controller.playing)
 
     def test_start_initial_video_failure(self):
@@ -108,7 +109,7 @@ class TestVlcPlaylist(unittest.TestCase):
 
         self.assertEqual(self.controller.video_index, 1)
         mock_select.assert_called_once()
-        mock_vlc.start_video.assert_called_once_with('test_video_2.mp4')
+        mock_vlc.start_video.assert_called_once_with('test_video_2.mp4', start_time=0.0)
         self.assertTrue(self.controller.playing)
 
     def test_advance_video_wraps_around(self):
@@ -122,7 +123,7 @@ class TestVlcPlaylist(unittest.TestCase):
             self.controller._advance_video()
 
         self.assertEqual(self.controller.video_index, 0)
-        mock_vlc.start_video.assert_called_once_with('test_video_1.mp4')
+        mock_vlc.start_video.assert_called_once_with('test_video_1.mp4', start_time=0.0)
 
     def test_run_starts_next_when_video_ends(self):
         """Test that the run loop advances when the current video process exits"""
@@ -259,44 +260,91 @@ class TestVlcPlaylist(unittest.TestCase):
 
         self.controller.config = original_config
 
-    def test_handle_sync_request(self):
-        """Test handling sync request"""
-        # This should not raise an exception
-        mock_socket = Mock()
-        message = {
-            'timestamp': 1234567890,
-            'video_position': 300.5
-        }
-        
-        with patch.object(self.controller, 'logger'):
-            self.controller._handle_sync_request(message, mock_socket)
-            # Should not raise any exceptions
-            
-    def test_handle_client_sync(self):
-        """Test handling client sync"""
-        # This should not raise an exception
-        mock_socket = Mock()
-        message = {
-            'timestamp': 1234567890,
-            'video_position': 300.5
-        }
-        
-        with patch.object(self.controller, 'logger'):
-            self.controller._handle_sync_request(message, mock_socket)
-            # Should not raise any exceptions
-            
+    def test_handle_sync_command_different_video(self):
+        """Test sync with a different video stops the current and starts the named one"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller, '_broadcast_sync'):
+            mock_vlc.current_video = '/videos/pe1.mp4'
+            mock_vlc.start_video.return_value = True
+
+            self.controller._handle_sync_command(['pe2.mp4', '30.5'])
+
+            mock_vlc.stop_video.assert_called_once()
+            mock_vlc.seek_to.assert_not_called()
+            mock_vlc.start_video.assert_called_once_with('pe2.mp4', start_time=30.5)
+            self.assertTrue(self.controller.playing)
+
+    def test_handle_sync_command_same_video(self):
+        """Test sync with the same video seeks the current playback"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller, '_broadcast_sync'):
+            mock_vlc.current_video = '/videos/pe2.mp4'
+            mock_vlc.seek_to.return_value = True
+
+            self.controller._handle_sync_command(['pe2.mp4', '12.00'])
+
+            mock_vlc.stop_video.assert_not_called()
+            mock_vlc.start_video.assert_not_called()
+            mock_vlc.seek_to.assert_called_once_with(12.0)
+            self.assertTrue(self.controller.playing)
+
+    def test_handle_sync_command_same_video_seek_failure(self):
+        """Test a failed seek logs an error and does not start a new video"""
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller, '_broadcast_sync'):
+            mock_vlc.current_video = '/videos/pe2.mp4'
+            mock_vlc.seek_to.return_value = False
+
+            self.controller._handle_sync_command(['pe2.mp4', '12.00'])
+
+            mock_vlc.start_video.assert_not_called()
+            self.assertTrue(any("Failed to seek" in str(c.args[0]) for c in mock_logger.error.call_args_list))
+
+    def test_handle_sync_command_nothing_playing(self):
+        """Test sync with no current video starts the named video"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller, '_broadcast_sync'):
+            mock_vlc.current_video = None
+            mock_vlc.start_video.return_value = True
+
+            self.controller._handle_sync_command(['pe3.mp4', '0.0'])
+
+            mock_vlc.stop_video.assert_called_once()
+            mock_vlc.seek_to.assert_not_called()
+            mock_vlc.start_video.assert_called_once_with('pe3.mp4', start_time=0.0)
+
+    def test_handle_sync_command_malformed_args(self):
+        """Test a sync line with the wrong argument count is rejected"""
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            self.controller._handle_sync_command(['pe2.mp4'])
+
+            mock_vlc.start_video.assert_not_called()
+            mock_vlc.seek_to.assert_not_called()
+            mock_vlc.stop_video.assert_not_called()
+            mock_logger.warn.assert_called_once()
+
+    def test_handle_sync_command_bad_timestamp(self):
+        """Test a sync line with a bad timestamp is rejected"""
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            self.controller._handle_sync_command(['pe2.mp4', 'not-a-number'])
+
+            mock_vlc.start_video.assert_not_called()
+            mock_vlc.seek_to.assert_not_called()
+            mock_vlc.stop_video.assert_not_called()
+            mock_logger.warn.assert_called_once()
+
     def test_handle_client_identify(self):
         """Test handling client identification"""
-        # This should not raise an exception
-        mock_socket = Mock()
-        message = {
-            'command': 'identify',
-            'type': 'vlc_client'
-        }
-        
-        with patch.object(self.controller, 'logger'):
-            self.controller._handle_client_identify(message, mock_socket)
-            # Should not raise any exceptions
+        with patch.object(self.controller, 'logger') as mock_logger:
+            self.controller._handle_client_identify(['client_1'], Mock())
+
+        mock_logger.info.assert_called_once()
             
     @patch('playlist_controller.TcpClient')
     def test_start_client_success(self, mock_tcp_client_class):
@@ -308,7 +356,7 @@ class TestVlcPlaylist(unittest.TestCase):
         result = self.controller._start_client()
         
         self.assertTrue(result)
-        mock_tcp_client_class.assert_called_once_with('192.168.1.100', 8080)  # Default from config
+        mock_tcp_client_class.assert_called_once_with('127.0.0.1', 8080)  # No client or server section
         
     @patch('playlist_controller.TcpClient')
     def test_start_client_failure(self, mock_tcp_client_class):
@@ -322,25 +370,38 @@ class TestVlcPlaylist(unittest.TestCase):
         self.assertFalse(result)
         
     @patch('playlist_controller.TcpClient')
-    def test_start_client_custom_config(self, mock_tcp_client_class):
-        """Test client start uses host/port from configuration"""
+    def test_start_client_uses_server_tcp_config(self, mock_tcp_client_class):
+        """Test client start uses host/port from server.tcp"""
         mock_client = Mock()
         mock_tcp_client_class.return_value = mock_client
         mock_client.run.return_value = True
-        
-        self.controller.config['client'] = {
+
+        self.controller.config['server'] = {
             'tcp': {
-                'host': '10.0.0.5',
-                'port': 9999
+                'host': 'vlc-00',
+                'port': 8080,
+                'max_clients': 10
             }
         }
-        
+
         result = self.controller._start_client()
-        
+
         self.assertTrue(result)
-        mock_tcp_client_class.assert_called_once_with('10.0.0.5', 9999)
+        mock_tcp_client_class.assert_called_once_with('vlc-00', 8080)
         self.assertIs(self.controller.tcp_client, mock_client)
-        
+
+    @patch('playlist_controller.TcpClient')
+    def test_start_client_registers_sync_handler(self, mock_tcp_client_class):
+        """Test the client registers a handler for sync commands"""
+        mock_client = Mock()
+        mock_tcp_client_class.return_value = mock_client
+        mock_client.run.return_value = True
+
+        self.controller._start_client()
+
+        mock_client.register_message_handler.assert_called_once_with(
+            'sync', self.controller._handle_sync_command)
+
     @patch('playlist_controller.TcpClient')
     def test_start_client_failure_clears_client(self, mock_tcp_client_class):
         """Test that a failed client start leaves no stale client behind"""
@@ -378,7 +439,89 @@ class TestVlcPlaylist(unittest.TestCase):
         with patch.object(self.controller, 'logger'):
             self.controller._start_server()
             # Should not raise any exceptions
-            
+
+    def test_start_video_broadcasts_sync_zero(self):
+        """Test that starting a video broadcasts 'sync <video name> 0.0' to clients"""
+        mock_server = Mock()
+        self.controller.tcp_server = mock_server
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            mock_vlc.start_video.return_value = True
+            mock_vlc.current_video = '/videos/pe1.mp4'
+            self.controller._start_video_by_name('pe1.mp4')
+
+        mock_server.broadcast.assert_called_once_with('sync pe1.mp4 0.0')
+
+    def test_start_video_no_broadcast_without_server(self):
+        """Test that starting a video is a no-op for sync when no server is running"""
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller, 'tcp_server', Mock()) as mock_server:
+            mock_vlc.start_video.return_value = True
+            self.controller.tcp_server = None
+            self.controller._start_video_by_name('pe1.mp4')
+
+        mock_server.broadcast.assert_not_called()
+
+    def test_broadcast_sync_formats_two_decimals(self):
+        """Test that periodic sync lines use the 'sync <name> <ss.nn>' format"""
+        mock_server = Mock()
+        self.controller.tcp_server = mock_server
+        with patch.object(self.controller, 'vlc_player') as mock_vlc:
+            mock_vlc.current_video = '/videos/pe2.mp4'
+            self.controller._broadcast_sync(12.5)
+
+        mock_server.broadcast.assert_called_once_with('sync pe2.mp4 12.50')
+
+    def test_send_periodic_sync(self):
+        """Test that the periodic sync broadcasts the current video position"""
+        mock_server = Mock()
+        self.controller.tcp_server = mock_server
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch('playlist_controller.time.time', side_effect=[116.0, 116.0]):
+            mock_vlc.current_video = '/videos/pe1.mp4'
+            self.controller.playing = True
+            self.controller._video_start_time = 100.0
+            self.controller._last_sync_time = 100.0
+            self.controller._send_periodic_sync()
+
+        mock_server.broadcast.assert_called_once_with('sync pe1.mp4 16.00')
+
+    def test_send_periodic_sync_not_due(self):
+        """Test that no sync is sent before sync_secs have elapsed"""
+        mock_server = Mock()
+        self.controller.tcp_server = mock_server
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch('playlist_controller.time.time', return_value=110.0):
+            mock_vlc.current_video = '/videos/pe1.mp4'
+            self.controller.playing = True
+            self.controller._video_start_time = 100.0
+            self.controller._last_sync_time = 100.0
+            self.controller._send_periodic_sync()
+
+        mock_server.broadcast.assert_not_called()
+
+    def test_send_periodic_sync_without_sync_secs(self):
+        """Test that no periodic sync is sent when schedule.sync_secs is unset"""
+        mock_server = Mock()
+        self.controller.tcp_server = mock_server
+        self.controller.config['schedule'] = {
+            'videos': ['test_video_1.mp4'],
+            'start': '08:00',
+            'end': '18:00'
+        }
+        self.controller.playing = True
+        self.controller._video_start_time = 100.0
+        self.controller._last_sync_time = 100.0
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc:
+            mock_vlc.current_video = '/videos/pe1.mp4'
+            self.controller._send_periodic_sync()
+
+        mock_server.broadcast.assert_not_called()
+
     def test_stop_no_connections(self):
         """Test stopping when no connections are active"""
         # This should not raise an exception

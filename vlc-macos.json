@@ -1,0 +1,29 @@
+{
+  "player": {
+    "name": "vlc-playlist-controller-server",
+    "video_directory": "/Users/greg/videos",
+    "default_video": "charlie-brown-thanksgiving-portrait-rotated.mp4"
+  },
+  "vlc": {
+    "executable": "/Applications/VLC.app/Contents/MacOS/VLC",
+    "options": [
+      "--aout=auhal",
+      "--auhal-audio-device=MacBook Air Speakers",
+      "--fullscreen",
+      "--play-and-exit"
+    ]
+  },
+  "schedule": {
+    "videos": ["pe1.mp4", "pe2.mp4", "pe3.mp4", "pe4.mp4", "pe5.mp4"],
+    "start": "17:30",
+    "end": "23:59",
+    "sync_secs": 15
+  },
+  "server": {
+    "tcp": {
+      "host": "0.0.0.0",
+      "port": 8080,
+      "max_clients": 10
+    }
+  }
+}

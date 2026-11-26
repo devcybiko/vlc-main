@@ -4,7 +4,6 @@ VLC Playlist Controller for Raspberry Pi
 Based on the requirements in GOALS.md
 """
 import argparse
-import json
 import logging
 import os
 import signal
@@ -29,6 +28,8 @@ class VlcPlaylist(Application):
         self.tcp_client = None
         self.video_index = 0
         self.playing = False
+        self._video_start_time: float | None = None
+        self._last_sync_time: float | None = None
         
     def _arg_parse(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         """Add custom arguments for the VLC controller"""
@@ -37,29 +38,43 @@ class VlcPlaylist(Application):
         parser.add_argument("--client", action="store_true", help="Run in client mode, connecting to parent server")
         return parser
         
-    def _handle_sync_request(self, message, client_socket):
-        """Handle sync request from client"""
-        timestamp = message.get('timestamp')
-        video_position = message.get('video_position')
-        
-        self.logger.info(f"Received sync request - timestamp: {timestamp}, position: {video_position}")
-        
-        # In a real implementation, this would seek the currently playing video
-        # to the specified position
-        response = {
-            "command": "sync_ack",
-            "timestamp": timestamp,
-            "status": "success"
-        }
-        
+    def _handle_client_identify(self, args, client_socket):
+        """Handle "identify <client-id>" from a newly connected client"""
+        self.logger.info(f"Client identified: {args}")
+
+    def _handle_sync_command(self, args):
+        """Handle "sync <video-name> <secs.nn>" from the parent server
+
+        If the named video is different from the one currently playing, stop
+        the current video and start the named one at the given timestamp.
+        If it is the same video, seek it to the given timestamp.
+        """
+        if len(args) != 2:
+            self.logger.warn(f"Malformed sync command: {args}")
+            return
+        video_name, secs_text = args
         try:
-            client_socket.send(json.dumps(response).encode('utf-8'))
-        except Exception as e:
-            self.logger.error(f"Failed to send sync ack: {e}")
-            
-    def _handle_client_identify(self, message, client_socket):
-        """Handle client identification message"""
-        self.logger.info(f"Client identified: {message}")
+            secs = float(secs_text)
+        except ValueError:
+            self.logger.warn(f"Malformed sync timestamp: {secs_text}")
+            return
+
+        self.logger.info(f"Sync command: {video_name} at {secs}s")
+        current = self.vlc_player.current_video
+        if current and os.path.basename(current) == video_name:
+            # Same video - jump to the given position
+            if not self.vlc_player.seek_to(secs):
+                self.logger.error(f"Failed to seek {video_name} to {secs}s")
+                return
+            self.playing = True
+            self._video_start_time = time.time()
+            self._last_sync_time = time.time()
+            return
+
+        # Different video (or nothing playing) - stop and start the named video
+        self.vlc_player.stop_video()
+        self.playing = False
+        self._start_video_by_name(video_name, start_time=secs)
         
     def _validate_config(self) -> bool:
         """Validate the configuration"""
@@ -84,13 +99,40 @@ class VlcPlaylist(Application):
         """Current time in the configured location timezone"""
         return datetime.now(self.schedule_manager.tz)
 
-    def _start_video_by_name(self, video_file):
+    def _start_video_by_name(self, video_file, start_time: float = 0.0):
         """Start a video and track playback state; returns True on success"""
-        if self.vlc_player.start_video(video_file):
+        if self.vlc_player.start_video(video_file, start_time=start_time):
             self.playing = True
+            self._video_start_time = time.time()
+            self._last_sync_time = time.time()
+            self._broadcast_sync(0.0)
             return True
         self.logger.error(f"Failed to start video: {video_file}")
         return False
+
+    def _broadcast_sync(self, secs: float):
+        """Send "sync <video name> <secs.nn>" to all connected clients"""
+        if self.tcp_server is None:
+            return
+        video = self.vlc_player.current_video
+        if not video:
+            return
+        label = "0.0" if secs == 0.0 else f"{secs:.2f}"
+        self.tcp_server.broadcast(f"sync {os.path.basename(video)} {label}")
+
+    def _send_periodic_sync(self):
+        """Broadcast the current video position every schedule.sync_secs"""
+        if self.tcp_server is None or not self.playing:
+            return
+        if self._video_start_time is None or self._last_sync_time is None:
+            return
+        sync_secs = self.config.get('schedule', {}).get('sync_secs', 0)
+        if not sync_secs:
+            return
+        now = time.time()
+        if now - self._last_sync_time >= sync_secs:
+            self._last_sync_time = now
+            self._broadcast_sync(now - self._video_start_time)
 
     def _start_initial_video(self):
         """Start playback with the video that should be playing right now"""
@@ -145,7 +187,6 @@ class VlcPlaylist(Application):
         self.tcp_server = TcpServer(host, port, max_clients)
         
         # Register message handlers
-        self.tcp_server.register_message_handler('sync', self._handle_sync_request)
         self.tcp_server.register_message_handler('identify', self._handle_client_identify)
         
         # Start the server
@@ -153,12 +194,16 @@ class VlcPlaylist(Application):
         self.logger.info("TCP server started for client connections")
         
     def _start_client(self):
-        """Start the TCP client to connect to the parent server"""
-        client_config = self.config.get('client', {}).get('tcp', {})
-        host = client_config.get('host', '192.168.1.100')
-        port = client_config.get('port', 8080)
+        """Start the TCP client to connect to the parent server
+
+        Server host/port come from server.tcp in the config file.
+        """
+        server_tcp = self.config.get('server', {}).get('tcp', {})
+        host = server_tcp.get('host', '127.0.0.1')
+        port = server_tcp.get('port', 8080)
         
         self.tcp_client = TcpClient(host, port)
+        self.tcp_client.register_message_handler('sync', self._handle_sync_command)
         
         if not self.tcp_client.run():
             self.tcp_client = None
@@ -217,6 +262,7 @@ class VlcPlaylist(Application):
                     else:
                         # Video still running - check for window boundary crossings
                         self._check_window_boundary()
+                    self._send_periodic_sync()
                 time.sleep(1)
         except KeyboardInterrupt:
             self.logger.info("Interrupted by user")
