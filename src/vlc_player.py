@@ -113,7 +113,7 @@ class VlcPlayer:
         if lines and len(lines) < 2:
             return None
         timeline = lines[-2] # second to last line has current timestamp as "> 123"
-        curr_time = timeline[2:] # "> 123" -> "123"
+        curr_time = timeline.replace('>', '').strip()
         try:
             float(curr_time)
         except:
