@@ -41,6 +41,7 @@ class VlcTelnet:
         return line
 
     def send(self, cmd, prompt="> "):
+        self.logger.warning(f"Sending: {cmd}")
         self.sock.sendall(f"{cmd}\n".encode())
         response = self.read_until(prompt)
         return response
@@ -77,6 +78,7 @@ class VlcPlayer:
 
         Relative paths are resolved against config['player']['video_directory'].
         """
+        self.logger.warning(f"Starting video: {video_path}")
         self.stop_video() # stop it if it's already running
         if not os.path.isabs(video_path):
             video_dir = self.config.get('player', {}).get('video_directory', '')
@@ -96,7 +98,7 @@ class VlcPlayer:
         # Add video file
         cmd.append(video_path)
         
-        print(f"Starting VLC with command: {' '.join(cmd)}")
+        self.logger.warning(f"Starting VLC with command: {' '.join(cmd)}")
         self.process = subprocess.Popen(cmd)
         self.current_video = video_path
         self.telnet = VlcTelnet(self.TELNET_HOST, self.TELNET_PORT, self.TELNET_PASSWORD)
@@ -105,6 +107,7 @@ class VlcPlayer:
             
     def stop_video(self) -> bool:
         """Stop the currently playing video"""
+        self.logger.warning("Stopping video")
         if self.process and self.process.poll() is None:
             try:
                 # Try graceful shutdown first

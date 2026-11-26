@@ -46,3 +46,8 @@ Project: Raspberry Pi Zero 2 W portrait video playback, eventually deployed to a
 - No automatic-playback service has been created or enabled as part of this project so far; scheduling design is deferred.
 - The current known-good video is `~/videos/charlie-brown-thanksgiving-portrait-rotated.mp4`.
 - Bluetooth speaker configuration on the Toshiba TV itself is outside project scope.
+
+## Bugs
+
+- [ ] Restarting video doesn't appear to kill old player
+- [ ] If client loses TCP connection to parent, it should go into a loop looking to reconnect
