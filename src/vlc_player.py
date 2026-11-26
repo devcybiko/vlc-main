@@ -108,7 +108,7 @@ class VlcPlayer:
             return None
         lines = [line.strip() for line in data.splitlines() if line.strip()]
         print("rc:", lines)
-        return lines[-1] if lines else None
+        return lines[-2] if lines else None
 
     def get_time(self) -> Optional[float]:
         """Current playback position in seconds, sampled from VLC's rc
