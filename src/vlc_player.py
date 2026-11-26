@@ -104,6 +104,7 @@ class VlcPlayer:
             self.logger.debug(f"rc interface unavailable: {e}")
             return None
         lines = [line.strip() for line in data.splitlines() if line.strip()]
+        print("rc:", lines)
         return lines[-1] if lines else None
 
     def get_time(self) -> Optional[float]:
