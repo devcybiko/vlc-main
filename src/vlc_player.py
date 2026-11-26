@@ -15,6 +15,7 @@ class VlcPlayer:
     RC_HOST = '0.0.0.0'
     RC_PORT = 1127
     RC_TIMEOUT_SECS = 2.0
+    RC_PASSWORD="password"
 
     def __init__(self, config: Dict):
         self.config = config
@@ -24,16 +25,36 @@ class VlcPlayer:
         # Extra VLC options appended at launch (e.g. the rc interface on
         # clients). Empty by default so the server VLC is unaffected.
         self.extra_options: List[str] = []
-        self.rc_host = self.RC_HOST
-        self.rc_port = self.RC_PORT
-        self.rc_timeout = self.RC_TIMEOUT_SECS
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock.connect((self.RC_HOST, self.RC_PORT))
+        self.buffer = ""
+        
+        # 1. Handle Telnet Login immediately
+        self._read_until("\nPassword: ")
+        self.sock.sendall(f"{self.RC_PASSWORD}\n".encode())
+        self._read_until("> ") # Clear the welcome prompt
+
+    def _read_until(self, terminator):
+        """Reads stream bytes non-blockingly until terminator is found."""
+        while terminator not in self.buffer:
+            data = self.sock.recv(4096).decode('utf-8', errors='ignore')
+            if not data:
+                raise ConnectionError("VLC disconnected.")
+            print("data", data)
+            self.buffer += data
+        
+        # Split out the requested data chunk up to the terminator
+        line, _, self.buffer = self.buffer.partition(terminator)
+        return line
 
     @staticmethod
     def client_options() -> List[str]:
         """VLC options that enable the rc TCP interface for clients"""
         return [
-            '--extraintf=rc',
-            f'--rc-host={VlcPlayer.RC_HOST}:{VlcPlayer.RC_PORT}',
+            f'--extraintf=telnet',
+            f'--telnet-host=0.0.0.0',
+            f'--telnet-port={VlcPlayer.RC_PORT}',
+            f'--telnet-password={VlcPlayer.RC_PASSWORD}',
         ]
 
     def start_video(self, video_path: str, start_time: float = 0.0) -> bool:
@@ -44,6 +65,7 @@ class VlcPlayer:
 
         Relative paths are resolved against config['player']['video_directory'].
         """
+        self.stop_video() # stop it if it's already running
         if not os.path.isabs(video_path):
             video_dir = self.config.get('player', {}).get('video_directory', '')
             if video_dir:
@@ -89,92 +111,24 @@ class VlcPlayer:
         self.current_video = None
         return True
         
-    def _rc_command(self, command: str) -> Optional[str]:
-        """Send one command to VLC's rc TCP interface
+    def get_time(self):
+        """Instantly samples the video timestamp."""
+        self.sock.sendall(b"get_time\n")
+        # Telnet echoes back 'get_time\r\n<timestamp>\r\n> '
+        response = self._read_until("> ")
+        
+        # Parse out just the number
+        lines = [l.strip() for l in response.splitlines() if l.strip()]
+        for line in lines:
+            print("line:", line)
+            if line.isdigit():
+                return int(line)
+        return 0
 
-        Returns the last non-empty response line, or None if VLC is not
-        reachable (no connection, timeout, or empty reply).
-        """
-        print("rc cmd:", command)
-        try:
-            with socket.create_connection(
-                (self.rc_host, self.rc_port), timeout=self.rc_timeout
-            ) as sock:
-                sock.sendall((command + '\n').encode('utf-8'))
-                sleep(0.5)
-                data = sock.recv(4096).decode('utf-8', errors='replace')
-        except (OSError, socket.timeout) as e:
-            self.logger.error(f"rc interface unavailable: {e}")
-            return None
-        lines = [line.strip() for line in data.splitlines() if line.strip()]
-        print("rc:", lines)
-        if lines and len(lines) < 2:
-            return None
-        timeline = lines[-2] # second to last line has current timestamp as "> 123"
-        curr_time = timeline.replace('>', '').strip()
-        try:
-            float(curr_time)
-        except:
-            self.logger.error(f"Invalid time: {curr_time}")
-            return None
-        print("returning", curr_time)
-        return curr_time
-
-    def get_time(self) -> Optional[float]:
-        """Current playback position in seconds, sampled from VLC's rc
-        interface. Returns None if VLC is not reachable or not reporting
-        a position.
-        """
-        response = self._rc_command('get_time')
-        if response is None:
-            return None
-        return float(response)
-
-    @staticmethod
-    def _parse_time(text: str) -> Optional[float]:
-        """Parse a VLC rc time reply: plain seconds ("45", "45.5") or
-        colon-separated "H:MM:SS.fff" / "MM:SS.fff".
-        """
-        text = text.strip().strip('"')
-        if not text:
-            return None
-
-        def _num(part: str) -> Optional[float]:
-            part = part.strip()
-            if part.count('.') > 1 or not part.replace('.', '', 1).isdigit():
-                return None
-            return float(part)
-
-        if ':' not in text:
-            return _num(text)
-        parts = text.split(':')
-        if len(parts) > 3:
-            return None
-        total = 0.0
-        for part in parts:
-            value = _num(part)
-            if value is None:
-                return None
-            total = total * 60 + value
-        return total
-
-    def seek_to(self, seconds: float) -> bool:
-        """Seek the currently playing video to a timestamp
-
-        Prefers VLC's rc TCP interface ('seek' command), which is instant.
-        Falls back to restarting the current video with --start-time when
-        the rc interface is unavailable.
-        """
-        video_path = self.current_video
-        if not video_path:
-            self.logger.error("Cannot seek: no video is playing")
-            return False
-
-        if self._rc_command(f'seek {int(round(seconds))}') is not None:
-            return True
-
-        self.stop_video()
-        return self.start_video(video_path, start_time=seconds)
+    def seek_to(self, seconds):
+        """Instantly seeks to a specific timestamp."""
+        self.sock.sendall(f"seek {seconds}\n".encode())
+        self._read_until("> ") # Clear buffer up to next prompt
 
     def is_running(self) -> bool:
         """Check if VLC process is running"""
