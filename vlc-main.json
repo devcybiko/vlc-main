@@ -29,7 +29,7 @@
     },
     "server": {
         "tcp": {
-            "host": "vlc-00",
+            "host": "0.0.0.0",
             "port": 8080,
             "max_clients": 10
         }
