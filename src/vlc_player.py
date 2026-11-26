@@ -135,6 +135,7 @@ class VlcPlayer:
 
     def seek_to(self, seconds):
         self._send(f"seek {seconds}")
+        sleep(5)
         return self.get_time()
 
     def is_running(self) -> bool:
