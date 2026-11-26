@@ -32,7 +32,7 @@ class VlcPlayer:
         """VLC options that enable the rc TCP interface for clients"""
         return [
             '--extraintf=rc',
-            f'--rc-host={VlcPlayer.RC_HOST}:VlcPlayer.RC_PORT',
+            f'--rc-host={VlcPlayer.RC_HOST}:{VlcPlayer.RC_PORT}',
         ]
 
     def start_video(self, video_path: str, start_time: float = 0.0) -> bool:
