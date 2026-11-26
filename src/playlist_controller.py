@@ -57,7 +57,7 @@ class VlcPlaylist(Application):
             return
         video_name, secs_text = args
         try:
-            secs = float(secs_text)
+            secs = float(secs_text) + 1
         except ValueError:
             self.logger.warn(f"Malformed sync timestamp: {secs_text}")
             return
