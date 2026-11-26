@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 class VlcPlayer:
     # VLC remote-control (rc) TCP interface, used by clients to sample and
     # set the playback position without restarting VLC.
-    RC_HOST = '127.0.0.1'
+    RC_HOST = '0.0.0.0'
     RC_PORT = 1127
     RC_TIMEOUT_SECS = 2.0
 
