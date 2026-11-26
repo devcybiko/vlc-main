@@ -42,10 +42,8 @@ class VlcPlayer:
 
     def _connect(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.connect((self.RC_HOST, self.RC_PORT))
+        self.sock.connect(("127.0.0.1", self.RC_PORT))
         self.buffer = ""
-        
-        # 1. Handle Telnet Login immediately
         self._read_until("\nPassword: ")
         self.sock.sendall(f"{self.RC_PASSWORD}\n".encode())
         self._read_until("> ") # Clear the welcome prompt
