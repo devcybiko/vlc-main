@@ -14,6 +14,7 @@ class VlcTelnet:
         self.TELNET_HOST = host
         self.TELNET_PORT = port
         self.TELNET_PASSWORD = password
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def connect(self):
         for tries in range(5):
