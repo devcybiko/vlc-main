@@ -134,6 +134,7 @@ class VlcPlayer:
         print(cmd)
         self.sock.sendall(cmd)
         self._read_until("> ") # Clear buffer up to next prompt
+        return self.get_time()
 
     def is_running(self) -> bool:
         """Check if VLC process is running"""
