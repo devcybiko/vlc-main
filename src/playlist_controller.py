@@ -32,7 +32,7 @@ class VlcPlaylist(Application):
         self._last_sync_time: float | None = None
         # Maximum drift (seconds) between the client's actual position and
         # the sync target before the client resyncs.
-        self.sync_delta = float(self.config.get('sync_delta', 5.0))
+        self.sync_delta = float(self.config.schedule.sync_delta)
         
     def _arg_parse(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         """Add custom arguments for the VLC controller"""
