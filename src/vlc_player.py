@@ -119,6 +119,7 @@ class VlcPlayer:
         except:
             self.logger.error(f"Invalid time: {curr_time}")
             return None
+        print("returning", curr_time)
         return curr_time
 
     def get_time(self) -> Optional[float]:
