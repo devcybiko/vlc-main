@@ -134,6 +134,7 @@ class VlcPlayer:
         print(cmd)
         self.sock.sendall(cmd)
         self._read_until("> ") # Clear buffer up to next prompt
+        sleep(0.1)
         return self.get_time()
 
     def is_running(self) -> bool:
