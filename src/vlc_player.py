@@ -31,7 +31,7 @@ class VlcPlayer:
     def client_options() -> List[str]:
         """VLC options that enable the rc TCP interface for clients"""
         return [
-            '--extraintf rc',
+            '--extraintf=rc',
             f'--rc-host={VlcPlayer.RC_HOST}:VlcPlayer.RC_PORT',
         ]
 
