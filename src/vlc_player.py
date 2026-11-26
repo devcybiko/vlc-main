@@ -114,12 +114,17 @@ class VlcPlayer:
         self.process = None
         self.current_video = None
         return True
-        
+
+    def _send(self, cmd):
+        print(f"Sending: {cmd}")
+        self.sock.sendall(f"{cmd}\n".encode())
+        response = self._read_until("> ")
+        print(f"Response: {response}")
+        return response
+
     def get_time(self):
         """Instantly samples the video timestamp."""
-        self.sock.sendall(b"get_time\n")
-        # Telnet echoes back 'get_time\r\n<timestamp>\r\n> '
-        response = self._read_until("> ")
+        response = self._send("get_time")
         
         # Parse out just the number
         lines = [l.strip() for l in response.splitlines() if l.strip()]
@@ -129,12 +134,7 @@ class VlcPlayer:
         return 0
 
     def seek_to(self, seconds):
-        """Instantly seeks to a specific timestamp."""
-        cmd = f"seek {seconds}\n".encode()
-        print(cmd)
-        self.sock.sendall(cmd)
-        self._read_until("> ") # Clear buffer up to next prompt
-        sleep(0.1)
+        self._send(f"seek {seconds}")
         return self.get_time()
 
     def is_running(self) -> bool:
