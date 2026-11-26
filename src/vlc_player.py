@@ -94,6 +94,7 @@ class VlcPlayer:
         Returns the last non-empty response line, or None if VLC is not
         reachable (no connection, timeout, or empty reply).
         """
+        print("rc cmd:", command)
         try:
             with socket.create_connection(
                 (self.rc_host, self.rc_port), timeout=self.rc_timeout
@@ -101,7 +102,7 @@ class VlcPlayer:
                 sock.sendall((command + '\n').encode('utf-8'))
                 data = sock.recv(4096).decode('utf-8', errors='replace')
         except (OSError, socket.timeout) as e:
-            self.logger.debug(f"rc interface unavailable: {e}")
+            self.logger.die(f"rc interface unavailable: {e}")
             return None
         lines = [line.strip() for line in data.splitlines() if line.strip()]
         print("rc:", lines)
