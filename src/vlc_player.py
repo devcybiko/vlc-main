@@ -9,25 +9,26 @@ import subprocess
 from time import sleep
 from typing import Dict, List, Optional
 
-class VlcPlayer:
-    # VLC remote-control (rc) TCP interface, used by clients to sample and
-    # set the playback position without restarting VLC.
-    RC_HOST = '0.0.0.0'
-    RC_PORT = 1127
-    RC_TIMEOUT_SECS = 2.0
-    RC_PASSWORD="password"
+class VlcTelnet:
+    def __init__(self, host, port, password):
+        self.TELNET_HOST = host
+        self.TELNET_PORT = port
+        self.TELNET_PASSWORD = password
 
-    def __init__(self, config: Dict):
-        self.config = config
-        self.process = None
-        self.current_video = None
-        self.logger = logging.getLogger(self.__class__.__name__)
-        # Extra VLC options appended at launch (e.g. the rc interface on
-        # clients). Empty by default so the server VLC is unaffected.
-        self.extra_options: List[str] = []
-        self.sock = None
+    def connect(self):
+        for tries in range(5):
+            try:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sock.connect((self.TELNET_HOST, self.TELNET_PORT))
+                self.buffer = ""
+                self._read_until("\nPassword: ")
+                self._send(f"{self.TELNET_PASSWORD}\n".encode())
+                return
+            except Exception:
+                sleep(1)
+        raise ConnectionError("Failed to connect to VLC.")
 
-    def _read_until(self, terminator):
+    def read_until(self, terminator):
         """Reads stream bytes non-blockingly until terminator is found."""
         while terminator not in self.buffer:
             data = self.sock.recv(4096).decode('utf-8', errors='ignore')
@@ -40,28 +41,35 @@ class VlcPlayer:
         line, _, self.buffer = self.buffer.partition(terminator)
         return line
 
-    def _connect(self):
-        for tries in range(5):
-            try:
-                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                self.sock.connect(("127.0.0.1", self.RC_PORT))
-                self.buffer = ""
-                self._read_until("\nPassword: ")
-                self.sock.sendall(f"{self.RC_PASSWORD}\n".encode())
-                self._read_until("> ") # Clear the welcome prompt
-                return
-            except Exception:
-                sleep(1)
-        raise ConnectionError("Failed to connect to VLC.")
+    def send(self, cmd, prompt="> "):
+        print(f"Sending: {cmd}")
+        self.sock.sendall(f"{cmd}\n".encode())
+        response = self.read_until(prompt)
+        print(f"Response: {response}")
+        return response
+
+
+class VlcPlayer:
+    TELNET_HOST = "127.0.0.1"
+    TELNET_PORT = 1127
+    TELNET_PASSWORD="password"
+
+    def __init__(self, config: Dict):
+        self.config = config
+        self.process = None
+        self.current_video = None
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.sock = None
+        self.buffer = ""
 
     @staticmethod
-    def client_options() -> List[str]:
+    def _telnet_options() -> List[str]:
         """VLC options that enable the rc TCP interface for clients"""
         return [
             f'--extraintf=telnet',
             f'--telnet-host=127.0.0.1',
-            f'--telnet-port={VlcPlayer.RC_PORT}',
-            f'--telnet-password={VlcPlayer.RC_PASSWORD}',
+            f'--telnet-port={VlcPlayer.TELNET_PORT}',
+            f'--telnet-password={VlcPlayer.TELNET_PASSWORD}',
         ]
 
     def start_video(self, video_path: str, start_time: float = 0.0) -> bool:
@@ -84,7 +92,7 @@ class VlcPlayer:
         vlc_config = self.config.get('vlc', {})
         cmd = [vlc_config.get('executable', 'cvlc')]
         cmd.extend(vlc_config.get('options', []))
-        cmd.extend(self.extra_options)
+        cmd.extend(self._telnet_options())
         if start_time > 0:
             cmd.append(f"--start-time={start_time:.3f}")
 
@@ -94,7 +102,7 @@ class VlcPlayer:
         print(f"Starting VLC with command: {' '.join(cmd)}")
         self.process = subprocess.Popen(cmd)
         self.current_video = video_path
-        self._connect()
+        self.telnet = VlcTelnet(self.TELNET_HOST, self.TELNET_PORT, self.TELNET_PASSWORD).connect()
         return True
             
     def stop_video(self) -> bool:
@@ -115,16 +123,9 @@ class VlcPlayer:
         self.current_video = None
         return True
 
-    def _send(self, cmd):
-        print(f"Sending: {cmd}")
-        self.sock.sendall(f"{cmd}\n".encode())
-        response = self._read_until("> ")
-        print(f"Response: {response}")
-        return response
-
     def get_time(self):
         """Instantly samples the video timestamp."""
-        response = self._send("get_time")
+        response = self.telnet.send("get_time")
         
         # Parse out just the number
         lines = [l.strip() for l in response.splitlines() if l.strip()]
@@ -134,8 +135,8 @@ class VlcPlayer:
         return 0
 
     def seek_to(self, seconds):
-        self._send(f"seek {int(seconds)}")
-        sleep(5)
+        self.telnet.send(f"seek {int(seconds)}")
+        sleep(0.1)
         return self.get_time()
 
     def is_running(self) -> bool:

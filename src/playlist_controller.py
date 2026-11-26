@@ -22,8 +22,6 @@ class VlcPlaylist(Application):
         super().__init__("VLC Playlist Controller", debug_level=15, config_json="vlc-main.json")
         print("Initializing VLC Playlist")
         self.vlc_player = VlcPlayer(self.config)
-        self.vlc_player.extra_options = VlcPlayer.client_options()
-
         self.schedule_manager = ScheduleManager(self.config)
         self.running = False
         self.tcp_server = None
@@ -233,10 +231,6 @@ class VlcPlaylist(Application):
         host = server_tcp.get('host', '127.0.0.1')
         port = server_tcp.get('port', 8080)
 
-        # Client VLC runs with the rc TCP interface so sync commands can
-        # sample the position and seek without restarting VLC.
-        self.vlc_player.extra_options = VlcPlayer.client_options()
-        
         self.tcp_client = TcpClient(host, port)
         self.tcp_client.register_message_handler('sync', self._handle_sync_command)
         
