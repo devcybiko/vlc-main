@@ -30,6 +30,9 @@ class VlcPlaylist(Application):
         self.playing = False
         self._video_start_time: float | None = None
         self._last_sync_time: float | None = None
+        # Maximum drift (seconds) between the client's actual position and
+        # the sync target before the client resyncs.
+        self.sync_delta = float(self.config.get('sync_delta', 5.0))
         
     def _arg_parse(self, parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
         """Add custom arguments for the VLC controller"""
@@ -62,7 +65,27 @@ class VlcPlaylist(Application):
         self.logger.info(f"Sync command: {video_name} at {secs}s")
         current = self.vlc_player.current_video
         if current and os.path.basename(current) == video_name:
-            # Same video - jump to the given position
+            # Same video - only disturb playback if we're actually out of sync
+            position = self.vlc_player.get_time()
+            if position is None:
+                # rc interface unreachable - fall back to a hard resync
+                self.logger.warn(
+                    f"Cannot sample position via rc; resyncing {video_name} to {secs:.2f}s"
+                )
+            elif abs(position - secs) <= self.sync_delta:
+                self.logger.info(
+                    f"In sync for {video_name} "
+                    f"(local {position:.2f}s, target {secs:.2f}s, "
+                    f"drift {abs(position - secs):.2f}s <= {self.sync_delta:.2f}s)"
+                )
+                self.playing = True
+                self._last_sync_time = time.time()
+                return
+            else:
+                self.logger.info(
+                    f"Resyncing {video_name}: local {position:.2f}s, "
+                    f"target {secs:.2f}s (drift > {self.sync_delta:.2f}s)"
+                )
             if not self.vlc_player.seek_to(secs):
                 self.logger.error(f"Failed to seek {video_name} to {secs}s")
                 return
@@ -204,6 +227,10 @@ class VlcPlaylist(Application):
         server_tcp = self.config.get('server', {}).get('tcp', {})
         host = server_tcp.get('host', '127.0.0.1')
         port = server_tcp.get('port', 8080)
+
+        # Client VLC runs with the rc TCP interface so sync commands can
+        # sample the position and seek without restarting VLC.
+        self.vlc_player.extra_options = VlcPlayer.client_options()
         
         self.tcp_client = TcpClient(host, port)
         self.tcp_client.register_message_handler('sync', self._handle_sync_command)

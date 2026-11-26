@@ -215,3 +215,7 @@ We'll consider the first standalone version complete when it can:
     * fast-forwards the currently playing video to the timestamp specified
 
 
+## SCOPE
+
+- RPI 02W operation only
+    - MacOS is out of scope (ignore vlc-macos.json)

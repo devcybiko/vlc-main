@@ -25,7 +25,8 @@
         ],
         "start": "17:30",
         "end": "23:59",
-        "sync_secs": 15
+        "sync_secs": 15,
+        "sync_delta": 2
     },
     "server": {
         "tcp": {

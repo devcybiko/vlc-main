@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
 
 from glslib import Application
 from playlist_controller import VlcPlaylist
+from vlc_player import VlcPlayer
 
 
 class TestVlcPlaylist(unittest.TestCase):
@@ -51,6 +52,7 @@ class TestVlcPlaylist(unittest.TestCase):
         self.assertFalse(self.controller.running)
         self.assertIsNone(self.controller.tcp_server)
         self.assertIsNone(self.controller.tcp_client)
+        self.assertEqual(self.controller.sync_delta, 5.0)
         
     def test_arg_parse(self):
         """Test argument parsing"""
@@ -275,12 +277,30 @@ class TestVlcPlaylist(unittest.TestCase):
             mock_vlc.start_video.assert_called_once_with('pe2.mp4', start_time=30.5)
             self.assertTrue(self.controller.playing)
 
-    def test_handle_sync_command_same_video(self):
-        """Test sync with the same video seeks the current playback"""
+    def test_handle_sync_command_same_video_within_delta(self):
+        """Same video within sync_delta leaves playback undisturbed"""
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller, '_broadcast_sync'):
+            mock_vlc.current_video = '/videos/pe2.mp4'
+            mock_vlc.get_time.return_value = 11.5
+
+            result = self.controller._handle_sync_command(['pe2.mp4', '12.00'])
+
+            self.assertIsNone(result)
+            mock_vlc.seek_to.assert_not_called()
+            mock_vlc.stop_video.assert_not_called()
+            mock_vlc.start_video.assert_not_called()
+            self.assertTrue(self.controller.playing)
+            self.assertTrue(any("In sync" in str(c.args[0]) for c in mock_logger.info.call_args_list))
+
+    def test_handle_sync_command_same_video_beyond_delta(self):
+        """Same video beyond sync_delta seeks the current playback"""
         with patch.object(self.controller, 'logger'), \
              patch.object(self.controller, 'vlc_player') as mock_vlc, \
              patch.object(self.controller, '_broadcast_sync'):
             mock_vlc.current_video = '/videos/pe2.mp4'
+            mock_vlc.get_time.return_value = 60.0
             mock_vlc.seek_to.return_value = True
 
             self.controller._handle_sync_command(['pe2.mp4', '12.00'])
@@ -290,12 +310,42 @@ class TestVlcPlaylist(unittest.TestCase):
             mock_vlc.seek_to.assert_called_once_with(12.0)
             self.assertTrue(self.controller.playing)
 
+    def test_handle_sync_command_same_video_respects_sync_delta(self):
+        """The resync gate uses the configured sync_delta value"""
+        self.controller.sync_delta = 1.0
+        with patch.object(self.controller, 'logger'), \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller, '_broadcast_sync'):
+            mock_vlc.current_video = '/videos/pe2.mp4'
+            # Drift of 4s is within the default 5s delta but not 1s
+            mock_vlc.get_time.return_value = 16.0
+            mock_vlc.seek_to.return_value = True
+
+            self.controller._handle_sync_command(['pe2.mp4', '12.00'])
+
+            mock_vlc.seek_to.assert_called_once_with(12.0)
+
+    def test_handle_sync_command_same_video_rc_down(self):
+        """Unreachable rc interface falls back to a hard resync"""
+        with patch.object(self.controller, 'logger') as mock_logger, \
+             patch.object(self.controller, 'vlc_player') as mock_vlc, \
+             patch.object(self.controller, '_broadcast_sync'):
+            mock_vlc.current_video = '/videos/pe2.mp4'
+            mock_vlc.get_time.return_value = None
+            mock_vlc.seek_to.return_value = True
+
+            self.controller._handle_sync_command(['pe2.mp4', '12.00'])
+
+            mock_vlc.seek_to.assert_called_once_with(12.0)
+            self.assertTrue(any("Cannot sample position" in str(c.args[0]) for c in mock_logger.warn.call_args_list))
+
     def test_handle_sync_command_same_video_seek_failure(self):
         """Test a failed seek logs an error and does not start a new video"""
         with patch.object(self.controller, 'logger') as mock_logger, \
              patch.object(self.controller, 'vlc_player') as mock_vlc, \
              patch.object(self.controller, '_broadcast_sync'):
             mock_vlc.current_video = '/videos/pe2.mp4'
+            mock_vlc.get_time.return_value = 60.0
             mock_vlc.seek_to.return_value = False
 
             self.controller._handle_sync_command(['pe2.mp4', '12.00'])
@@ -357,6 +407,8 @@ class TestVlcPlaylist(unittest.TestCase):
         
         self.assertTrue(result)
         mock_tcp_client_class.assert_called_once_with('127.0.0.1', 8080)  # No client or server section
+        # Client VLC must launch with the rc TCP interface
+        self.assertEqual(self.controller.vlc_player.extra_options, VlcPlayer.client_options())
         
     @patch('playlist_controller.TcpClient')
     def test_start_client_failure(self, mock_tcp_client_class):
@@ -439,6 +491,8 @@ class TestVlcPlaylist(unittest.TestCase):
         with patch.object(self.controller, 'logger'):
             self.controller._start_server()
             # Should not raise any exceptions
+            # Server VLC must not get the client-only rc options
+            self.assertEqual(self.controller.vlc_player.extra_options, [])
 
     def _swap_server_tcp(self, tcp: dict):
         """Temporarily replace the controller's server.tcp config section"""
