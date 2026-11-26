@@ -155,7 +155,8 @@ class VlcPlaylist(Application):
         now = time.time()
         if now - self._last_sync_time >= sync_secs:
             self._last_sync_time = now
-            self._broadcast_sync(now - self._video_start_time)
+            curr_time = self.vlc_player.get_time()
+            self._broadcast_sync(curr_time)
 
     def _start_initial_video(self):
         """Start playback with the video that should be playing right now"""
