@@ -53,7 +53,7 @@ class VlcPlayer:
         """VLC options that enable the rc TCP interface for clients"""
         return [
             f'--extraintf=telnet',
-            f'--telnet-host=0.0.0.0',
+            f'--telnet-host=127.0.0.1',
             f'--telnet-port={VlcPlayer.RC_PORT}',
             f'--telnet-password={VlcPlayer.RC_PASSWORD}',
         ]
