@@ -135,6 +135,7 @@ class VlcPlaylist(Application):
 
     def _broadcast_sync(self, secs: float):
         """Send "sync <video name> <secs.nn>" to all connected clients"""
+        print(f"Broadcasting sync: {secs}")
         if self.tcp_server is None:
             return
         video = self.vlc_player.current_video
