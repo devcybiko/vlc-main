@@ -12,17 +12,20 @@ from unittest.mock import Mock, patch
 # Add src to path so we can import our modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../src'))
 
+from munch import DefaultMunch
 from glslib import Application
 from playlist_controller import VlcPlaylist
 from vlc_player import VlcPlayer
 
 
-class TestVlcPlaylist(unittest.TestCase):
-    def setUp(self):
-        """Set up test fixtures before each test method."""
-        # Build the controller through its real constructor, stubbing only
-        # CLI argument parsing and configuration loading.
-        config_dict = {
+class VlcPlaylistTestCase(unittest.TestCase):
+    """Shared fixture helpers for the controller tests."""
+
+    @staticmethod
+    def _config_dict():
+        """Fresh copy of the test configuration (no 'dry_run' key; dry-run
+        is a CLI-only flag)."""
+        return {
             'player': {
                 'default_video': 'test.mp4'
             },
@@ -37,13 +40,35 @@ class TestVlcPlaylist(unittest.TestCase):
                 'videos': ['test_video_1.mp4', 'test_video_2.mp4'],
                 'start': '08:00',
                 'end': '18:00',
-                'sync_secs': 15
+                'sync_secs': 15,
+                'sync_delta': 1
             }
         }
-        with patch.object(sys, 'argv', [__file__]), \
-             patch.object(Application, '_config_load', return_value=config_dict):
-            self.controller = VlcPlaylist()
-            self.controller.logger = Mock()
+
+    def _build_controller(self, argv, dot_access=False):
+        """Build the controller through its real constructor, stubbing only
+        CLI argument parsing and configuration loading.
+
+        dot_access=True returns a config shaped like production's
+        (an attribute-accessible DefaultMunch), which the real
+        constructor requires.
+        """
+        config = self._config_dict()
+        if dot_access:
+            # fromDict: like production (glslib.Application._config_load);
+            # the bare constructor takes the dict as its default value.
+            config = DefaultMunch.fromDict(config)
+        with patch.object(sys, 'argv', argv), \
+             patch.object(Application, '_config_load', return_value=config):
+            controller = VlcPlaylist()
+            controller.logger = Mock()
+            return controller
+
+
+class TestVlcPlaylist(VlcPlaylistTestCase):
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.controller = self._build_controller([__file__])
             
     def test_init(self):
         """Test VlcPlaylist initialization"""
@@ -156,21 +181,6 @@ class TestVlcPlaylist(unittest.TestCase):
             self.controller.run()
 
         mock_start.assert_called_once()
-
-    def test_run_dry_run_skips_playback(self):
-        """Test that dry-run mode never touches the player in the loop"""
-        self.controller.config['dry_run'] = True
-        with patch.object(self.controller, 'start'), \
-             patch.object(self.controller, 'stop'), \
-             patch.object(self.controller, 'logger'), \
-             patch.object(self.controller, 'vlc_player') as mock_vlc, \
-             patch('playlist_controller.time.sleep', side_effect=KeyboardInterrupt):
-            self.controller.running = True
-            self.controller.playing = False
-            self.controller.run()
-
-        mock_vlc.start_video.assert_not_called()
-        mock_vlc.is_running.assert_not_called()
 
     def test_is_playing_scheduled(self):
         """Test scheduled-vs-default detection by file name"""
@@ -706,6 +716,55 @@ class TestVlcPlaylist(unittest.TestCase):
             self.controller._signal_handler(signal.SIGTERM, None)
             
         mock_stop.assert_called_once()
+
+
+class TestVlcPlaylistDryRun(VlcPlaylistTestCase):
+    """Tests for the CLI-only --dry-run flag.
+
+    These exercise the real constructor, which requires a production-shaped
+    (attribute-accessible) config, so the fixture is built with
+    dot_access=True.
+    """
+
+    def setUp(self):
+        """Build the controller with a production-shaped config."""
+        self.controller = self._build_controller([__file__], dot_access=True)
+
+    def test_start_launches_initial_video(self):
+        """Test that a normal start plays the initial video"""
+        with patch.object(self.controller, '_validate_config', return_value=True), \
+             patch('playlist_controller.signal.signal'), \
+             patch.object(self.controller, '_start_initial_video') as mock_start:
+            self.controller.start()
+
+        mock_start.assert_called_once()
+        self.assertTrue(self.controller.running)
+
+    def test_start_dry_run_skips_initial_video(self):
+        """Test that --dry-run prevents the initial playback at startup"""
+        controller = self._build_controller([__file__, '--dry-run'], dot_access=True)
+        with patch.object(controller, '_validate_config', return_value=True), \
+             patch('playlist_controller.signal.signal'), \
+             patch.object(controller, '_start_initial_video') as mock_start:
+            controller.start()
+
+        mock_start.assert_not_called()
+        self.assertTrue(controller.running)
+
+    def test_run_dry_run_skips_playback(self):
+        """Test that dry-run mode never touches the player in the loop"""
+        controller = self._build_controller([__file__, '--dry-run'], dot_access=True)
+        with patch.object(controller, 'start'), \
+             patch.object(controller, 'stop'), \
+             patch.object(controller, 'logger'), \
+             patch.object(controller, 'vlc_player') as mock_vlc, \
+             patch('playlist_controller.time.sleep', side_effect=KeyboardInterrupt):
+            controller.running = True
+            controller.playing = False
+            controller.run()
+
+        mock_vlc.start_video.assert_not_called()
+        mock_vlc.is_running.assert_not_called()
 
 
 if __name__ == '__main__':

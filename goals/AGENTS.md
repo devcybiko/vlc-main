@@ -44,3 +44,7 @@ After modifying Python code:
 - Distinguish pre-existing failures from newly introduced failures.
 - Never claim functional correctness based solely on static analysis.
 - Report any tests that could not be executed successfully.
+
+## Exclusions
+
+- Do not modify ~/git/glslib or its child files and folders

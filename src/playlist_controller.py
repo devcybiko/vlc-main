@@ -271,7 +271,7 @@ class VlcPlaylist(Application):
         signal.signal(signal.SIGINT, self._signal_handler)
         
         # Initial video selection and playback
-        if self.config.get('dry_run'):
+        if self.args.dry_run:
             self.logger.info("Dry run mode - evaluating schedule without playback")
         else:
             self._start_initial_video()
@@ -282,7 +282,7 @@ class VlcPlaylist(Application):
         
         try:
             while self.running:
-                if not self.config.get('dry_run'):
+                if not self.args.dry_run:
                     if self.playing and not self.vlc_player.is_running():
                         # The current video ended - start the next one
                         self._advance_video()
