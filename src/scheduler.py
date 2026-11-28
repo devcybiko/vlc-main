@@ -11,32 +11,21 @@ The schedule config looks like:
 
 Within the window the listed videos play in order and loop back to the
 first when the last one ends. Outside the window the configured
-default video plays. Times are interpreted in the configured location
+default video plays. Times are interpreted in the system's local
 timezone; overnight windows (end <= start) wrap past midnight.
 """
 import logging
-from datetime import datetime, time, timezone, tzinfo
+from datetime import datetime, time
 from typing import Dict, List, Optional
-from zoneinfo import ZoneInfo
 
 class ScheduleManager:
     def __init__(self, config: Dict):
         self.config = config
-        self.location = config.get('location', {})
         schedule = config.get('schedule') or {}
         self.videos: List[str] = list(schedule.get('videos') or [])
         self.start_time = self._parse_hhmm(schedule.get('start'))
         self.end_time = self._parse_hhmm(schedule.get('end'))
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.tz = self._load_timezone()
-
-    def _load_timezone(self) -> tzinfo:
-        tz_name = self.location.get('timezone', 'UTC')
-        try:
-            return ZoneInfo(tz_name)
-        except Exception:
-            self.logger.warn(f"Unknown timezone {tz_name!r}, falling back to UTC")
-            return timezone.utc
 
     @staticmethod
     def _parse_hhmm(value: Optional[str]) -> Optional[time]:
@@ -49,10 +38,16 @@ class ScheduleManager:
         except (ValueError, TypeError):
             return None
 
-    def _local_time(self, dt: datetime) -> time:
+    @staticmethod
+    def _local_time(dt: datetime) -> time:
+        """dt's time-of-day in the system's local timezone
+
+        Naive datetimes are already local and used as-is; aware
+        datetimes are converted to local time.
+        """
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=self.tz)
-        return dt.astimezone(self.tz).time()
+            return dt.time()
+        return dt.astimezone().time()
 
     def in_window(self, dt: datetime) -> bool:
         """Whether dt falls inside the schedule's start/end window"""

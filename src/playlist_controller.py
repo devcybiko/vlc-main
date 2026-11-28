@@ -119,8 +119,8 @@ class VlcPlaylist(Application):
         return True
 
     def _local_now(self):
-        """Current time in the configured location timezone"""
-        return datetime.now(self.schedule_manager.tz)
+        """Current time in the system's local timezone"""
+        return datetime.now().astimezone()
 
     def _start_video_by_name(self, video_file, start_time: float = 0.0):
         """Start a video and track playback state; returns True on success"""
